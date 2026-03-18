@@ -11,6 +11,7 @@ interface TopBarProps {
   onCompile: () => void
   onFilesSelected: (files: FileList) => void
   onCompilerChange: (compiler: 'pdflatex' | 'xelatex') => void
+  onOpenFolder: () => void
 }
 
 function SpinnerIcon() {
@@ -47,6 +48,7 @@ export default function TopBar({
   onCompile,
   onFilesSelected,
   onCompilerChange,
+  onOpenFolder,
 }: TopBarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -101,6 +103,15 @@ export default function TopBar({
         <option value="xelatex">XeLaTeX</option>
         <option value="pdflatex">pdfLaTeX</option>
       </select>
+
+      {/* Open Folder button */}
+      <button
+        onClick={onOpenFolder}
+        className="text-sm px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:border-cyan-500 hover:text-cyan-400 transition-colors"
+        title="Open a project folder"
+      >
+        📂 Open Folder
+      </button>
 
       {/* Upload button */}
       <button
