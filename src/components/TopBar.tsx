@@ -91,7 +91,7 @@ export default function TopBar({
   }
 
   return (
-    <header className="flex items-center gap-3 px-4 py-2 bg-zinc-900 border-b border-zinc-800 shrink-0">
+    <header dir="ltr" className="flex items-center gap-3 px-4 py-2 bg-zinc-900 border-b border-zinc-800 shrink-0">
       {/* Logo */}
       <div className="flex items-center gap-0.5 mr-2 select-none">
         <span className="text-xl font-bold text-zinc-400">VIS</span>
@@ -99,7 +99,7 @@ export default function TopBar({
       </div>
 
       {/* File name */}
-      <span className="text-sm text-zinc-400 font-mono bg-zinc-800 px-2 py-1 rounded">
+      <span className="text-sm text-zinc-400 font-mono bg-zinc-800 px-2 py-1 rounded max-w-[180px] truncate">
         {fileName}
       </span>
 
@@ -113,7 +113,7 @@ export default function TopBar({
         value={compiler}
         onChange={(e) => onCompilerChange(e.target.value as 'pdflatex' | 'xelatex')}
         disabled={isCompiling}
-        className="text-sm px-2 py-1.5 rounded border border-zinc-600 bg-zinc-800 text-zinc-300 hover:border-cyan-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        className="shrink-0 text-sm px-2 py-1.5 rounded border border-zinc-600 bg-zinc-800 text-zinc-300 hover:border-cyan-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         title="Select LaTeX compiler"
       >
         <option value="xelatex">XeLaTeX</option>
@@ -123,7 +123,7 @@ export default function TopBar({
       {/* Open Folder button */}
       <button
         onClick={onOpenFolder}
-        className="text-sm px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:border-cyan-500 hover:text-cyan-400 transition-colors"
+        className="shrink-0 text-sm px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:border-cyan-500 hover:text-cyan-400 transition-colors"
         title="Open a project folder"
       >
         📂 Open Folder
@@ -132,7 +132,7 @@ export default function TopBar({
       {/* Upload button */}
       <button
         onClick={() => fileInputRef.current?.click()}
-        className="text-sm px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:border-cyan-500 hover:text-cyan-400 transition-colors"
+        className="shrink-0 text-sm px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:border-cyan-500 hover:text-cyan-400 transition-colors"
       >
         Upload Files
       </button>
@@ -149,7 +149,7 @@ export default function TopBar({
       <button
         onClick={onCompile}
         disabled={isCompiling}
-        className="text-sm px-3 py-1.5 rounded bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        className="shrink-0 text-sm px-3 py-1.5 rounded bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         Compile ▶
       </button>
@@ -158,7 +158,7 @@ export default function TopBar({
       <button
         onClick={handleDownload}
         disabled={!pdfUrl}
-        className="text-sm px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:border-cyan-500 hover:text-cyan-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        className="shrink-0 text-sm px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:border-cyan-500 hover:text-cyan-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
         Download PDF
       </button>
@@ -184,7 +184,7 @@ export default function TopBar({
           )}
           <button
             onClick={onOpenDrive}
-            className="text-sm px-2.5 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:border-cyan-500 hover:text-cyan-400 transition-colors flex items-center gap-1.5"
+            className="shrink-0 text-sm px-2.5 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:border-cyan-500 hover:text-cyan-400 transition-colors flex items-center gap-1.5"
             title="Browse Google Drive"
           >
             {/* Small Drive icon */}
@@ -223,7 +223,7 @@ export default function TopBar({
       ) : (
         <button
           onClick={onGoogleSignIn}
-          className="text-sm px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:border-cyan-500 hover:text-cyan-400 transition-colors flex items-center gap-1.5"
+          className="shrink-0 text-sm px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:border-cyan-500 hover:text-cyan-400 transition-colors flex items-center gap-1.5"
           title="Sign in with Google for Drive integration"
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

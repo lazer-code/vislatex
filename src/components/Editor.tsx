@@ -6,9 +6,10 @@ import { getLineDirection } from '@/utils/lineDirection'
 interface EditorProps {
   value: string
   onChange: (value: string) => void
+  diagnostics?: Array<{ line: number; message: string; severity: 'error' | 'warning' }>
 }
 
-export default function Editor({ value, onChange }: EditorProps) {
+export default function Editor({ value, onChange, diagnostics }: EditorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<import('monaco-editor').editor.IStandaloneCodeEditor | null>(null)
   const valueRef = useRef(value)
@@ -33,10 +34,52 @@ export default function Editor({ value, onChange }: EditorProps) {
 
       if (cancelled || !containerRef.current) return
 
+      monacoInstance.languages.register({ id: 'latex' })
+      monacoInstance.languages.setMonarchTokensProvider('latex', {
+        defaultToken: '',
+        tokenizer: {
+          root: [
+            [/%.*$/, 'comment'],
+            [/\\(?:begin|end)\b/, 'keyword.control'],
+            [/\\[a-zA-Z@]+\*?/, 'keyword'],
+            [/\$\$/, { token: 'string.math', next: '@mathblock' }],
+            [/\$/, { token: 'string.math', next: '@mathinline' }],
+            [/[{}]/, 'delimiter.curly'],
+            [/[\[\]]/, 'delimiter.bracket'],
+            [/[0-9]+/, 'number'],
+            [/[&]/, 'operator'],
+          ],
+          mathblock: [
+            [/\$\$/, { token: 'string.math', next: '@pop' }],
+            [/./, 'string.math'],
+          ],
+          mathinline: [
+            [/\$/, { token: 'string.math', next: '@pop' }],
+            [/./, 'string.math'],
+          ],
+        },
+      })
+
+      monacoInstance.editor.defineTheme('latex-dark', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+          { token: 'comment', foreground: '6A9955', fontStyle: 'italic' },
+          { token: 'keyword.control', foreground: 'C586C0', fontStyle: 'bold' },
+          { token: 'keyword', foreground: '569CD6' },
+          { token: 'string.math', foreground: 'CE9178' },
+          { token: 'delimiter.curly', foreground: 'FFD700' },
+          { token: 'delimiter.bracket', foreground: 'DA70D6' },
+          { token: 'number', foreground: 'B5CEA8' },
+          { token: 'operator', foreground: 'D4D4D4' },
+        ],
+        colors: {},
+      })
+
       const editor = monacoInstance.editor.create(containerRef.current, {
         value: valueRef.current,
         language: 'latex',
-        theme: 'vs-dark',
+        theme: 'latex-dark',
         minimap: { enabled: false },
         fontSize: 14,
         lineNumbers: 'on' as const,
@@ -185,6 +228,27 @@ export default function Editor({ value, onChange }: EditorProps) {
       }
     }
   }, [value])
+
+  // Apply diagnostics as Monaco markers
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    import('@monaco-editor/react').then(({ loader }) => {
+      loader.init().then((monacoInst) => {
+        const model = editor.getModel()
+        if (!model) return
+        const markers = (diagnostics ?? []).map((d) => ({
+          severity: d.severity === 'error' ? monacoInst.MarkerSeverity.Error : monacoInst.MarkerSeverity.Warning,
+          message: d.message,
+          startLineNumber: d.line,
+          startColumn: 1,
+          endLineNumber: d.line,
+          endColumn: 999,
+        }))
+        monacoInst.editor.setModelMarkers(model, 'latex', markers)
+      })
+    })
+  }, [diagnostics])
 
   return (
     <div className="flex-1 h-full bg-zinc-900 overflow-hidden relative">

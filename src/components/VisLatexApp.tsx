@@ -11,6 +11,7 @@ import AssetPanel from './AssetPanel'
 import FileExplorer from './FileExplorer'
 import GoogleDrivePanel from './GoogleDrivePanel'
 import type { DriveFile } from './GoogleDrivePanel'
+import GoogleSignInModal from './GoogleSignInModal'
 import { WorkspaceState, WorkspaceFile, isTextFile } from '../types/workspace'
 
 // Minimal local types for the File System Access API (not yet in @types/lib)
@@ -65,9 +66,9 @@ And the quadratic formula:
 
 const LS_SOURCE_KEY = 'vislatex_source'
 const LS_COMPILER_KEY = 'vislatex_compiler'
+const LS_GOOGLE_CLIENT_ID = 'vislatex_google_client_id'
 
 // ── Google OAuth helpers ─────────────────────────────────────────────────────
-const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? ''
 const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/drive'
 
 interface TokenClient {
@@ -106,6 +107,32 @@ function parseJwt(token: string): Record<string, string> {
   }
 }
 
+const getGoogleClientId = () =>
+  typeof window !== 'undefined' ? localStorage.getItem(LS_GOOGLE_CLIENT_ID) ?? '' : ''
+
+function parseCompileLog(log: string): Array<{ line: number; message: string; severity: 'error' | 'warning' }> {
+  const diags: Array<{ line: number; message: string; severity: 'error' | 'warning' }> = []
+  const lines = log.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const errMatch = lines[i].match(/^!\s+(.+)/)
+    if (errMatch) {
+      const msg = errMatch[1]
+      for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+        const lineMatch = lines[j].match(/^l\.(\d+)\s/)
+        if (lineMatch) {
+          diags.push({ line: parseInt(lineMatch[1], 10), message: msg, severity: 'error' })
+          break
+        }
+      }
+    }
+    const warnMatch = lines[i].match(/LaTeX Warning:\s+(.+?)(?:\s+on input line (\d+))?\.?\s*$/)
+    if (warnMatch && warnMatch[2]) {
+      diags.push({ line: parseInt(warnMatch[2], 10), message: warnMatch[1], severity: 'warning' })
+    }
+  }
+  return diags
+}
+
 export default function VisLatexApp() {
   const [latexSource, setLatexSource] = useState(() => {
     if (typeof window === 'undefined') return DEFAULT_LATEX
@@ -139,12 +166,18 @@ export default function VisLatexApp() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
 
+  // ── Resizable pane state ─────────────────────────────────────────────────
+  const [sidebarWidth, setSidebarWidth] = useState(224)
+  const [editorPct, setEditorPct] = useState(50)
+  const mainAreaRef = useRef<HTMLDivElement>(null)
+
   // ── Google auth & Drive state ────────────────────────────────────────────
   const [googleUser, setGoogleUser] = useState<GoogleUser | null>(null)
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null)
   const [driveFileId, setDriveFileId] = useState<string | null>(null)
   const [driveAutoSaveStatus, setDriveAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [showDrivePanel, setShowDrivePanel] = useState(false)
+  const [showGoogleSetupModal, setShowGoogleSetupModal] = useState(false)
   const tokenClientRef = useRef<TokenClient | null>(null)
   const driveAutoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const compile = useCallback(
@@ -278,10 +311,11 @@ export default function VisLatexApp() {
   // ── Google auth logic ─────────────────────────────────────────────────────
 
   /** Initialise the Google Identity Services token client once the script loads. */
-  const initTokenClient = useCallback(() => {
-    if (!GOOGLE_CLIENT_ID || !window.google) return
+  const initTokenClient = useCallback((clientId?: string) => {
+    const cid = clientId ?? getGoogleClientId()
+    if (!cid || !window.google) return
     tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
+      client_id: cid,
       scope: GOOGLE_SCOPES,
       callback: (resp) => {
         if (resp.error || !resp.access_token) return
@@ -292,33 +326,30 @@ export default function VisLatexApp() {
 
   // Wait for the GSI script to load, then initialise the token client.
   useEffect(() => {
-    if (!GOOGLE_CLIENT_ID) return
     if (window.google) {
-      initTokenClient()
+      const cid = getGoogleClientId()
+      if (cid) initTokenClient(cid)
       return
     }
     const script = document.getElementById('google-gsi-script')
     if (script) {
-      script.addEventListener('load', initTokenClient)
-      return () => script.removeEventListener('load', initTokenClient)
+      const handler = () => {
+        const cid = getGoogleClientId()
+        if (cid) initTokenClient(cid)
+      }
+      script.addEventListener('load', handler)
+      return () => script.removeEventListener('load', handler)
     }
   }, [initTokenClient])
 
-  const handleGoogleSignIn = useCallback(() => {
-    if (!GOOGLE_CLIENT_ID) {
-      alert(
-        'Google integration is not configured.\n\n' +
-        'Set NEXT_PUBLIC_GOOGLE_CLIENT_ID in your environment to enable Google Drive sync.'
-      )
-      return
-    }
+  const proceedWithGoogleSignIn = useCallback((clientId: string) => {
     if (!tokenClientRef.current) {
-      initTokenClient()
+      initTokenClient(clientId)
     }
     // Use Google Identity Services one-tap for profile info
     if (window.google?.accounts.id) {
       window.google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
+        client_id: clientId,
         callback: (resp) => {
           const payload = parseJwt(resp.credential)
           setGoogleUser({
@@ -333,6 +364,20 @@ export default function VisLatexApp() {
     // Request OAuth2 access token for Drive API
     tokenClientRef.current?.requestAccessToken({ prompt: 'consent' })
   }, [initTokenClient])
+
+  const handleGoogleSignIn = useCallback(() => {
+    const clientId = getGoogleClientId()
+    if (!clientId) {
+      setShowGoogleSetupModal(true)
+      return
+    }
+    proceedWithGoogleSignIn(clientId)
+  }, [proceedWithGoogleSignIn])
+
+  const handleGoogleSetupConfirm = useCallback((clientId: string) => {
+    setShowGoogleSetupModal(false)
+    proceedWithGoogleSignIn(clientId)
+  }, [proceedWithGoogleSignIn])
 
   const handleGoogleSignOut = useCallback(() => {
     if (googleUser?.email && window.google?.accounts.id) {
@@ -777,6 +822,8 @@ export default function VisLatexApp() {
         : workspace.name
     : 'main.tex'
 
+  const diagnostics = parseCompileLog(compileLog)
+
   return (
     <div
       className="flex flex-col h-screen bg-zinc-950"
@@ -817,32 +864,81 @@ export default function VisLatexApp() {
       {/* Asset panel only shown in single-file mode */}
       {!workspace && <AssetPanel assets={assets} onRemove={handleRemoveAsset} />}
 
-      <div className="flex flex-1 overflow-hidden">
+      <div ref={mainAreaRef} className="flex flex-1 overflow-hidden">
         {/* File Explorer sidebar — shown when a workspace is open */}
         {workspace && (
-          <div className="w-56 shrink-0 overflow-hidden">
-            <FileExplorer
-              workspaceName={workspace.name}
-              files={workspace.files}
-              extraFolders={workspace.extraFolders}
-              activeFilePath={activeFilePath}
-              mainTexPath={mainTexPath}
-              onFileClick={handleFileClick}
-              onNewFile={handleNewFile}
-              onNewFolder={handleNewFolder}
-              onRename={handleRename}
-              onDelete={handleDelete}
-              onSetMainTex={handleSetMainTex}
-            />
-          </div>
+          <>
+            <div style={{ width: sidebarWidth, minWidth: sidebarWidth }} className="shrink-0 overflow-hidden">
+              <FileExplorer
+                workspaceName={workspace.name}
+                files={workspace.files}
+                extraFolders={workspace.extraFolders}
+                activeFilePath={activeFilePath}
+                mainTexPath={mainTexPath}
+                onFileClick={handleFileClick}
+                onNewFile={handleNewFile}
+                onNewFolder={handleNewFolder}
+                onRename={handleRename}
+                onDelete={handleDelete}
+                onSetMainTex={handleSetMainTex}
+              />
+            </div>
+            {/* Sidebar resize handle */}
+            <div
+              className="w-1 shrink-0 bg-zinc-700 hover:bg-cyan-500 cursor-col-resize flex flex-col items-center justify-center gap-0.5 transition-colors"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                const startX = e.clientX
+                const startW = sidebarWidth
+                const onMove = (mv: MouseEvent) => {
+                  const next = Math.min(480, Math.max(120, startW + mv.clientX - startX))
+                  setSidebarWidth(next)
+                }
+                const onUp = () => {
+                  window.removeEventListener('mousemove', onMove)
+                  window.removeEventListener('mouseup', onUp)
+                }
+                window.addEventListener('mousemove', onMove)
+                window.addEventListener('mouseup', onUp)
+              }}
+            >
+              <span className="w-0.5 h-3 bg-zinc-500 rounded-full" />
+              <span className="w-0.5 h-3 bg-zinc-500 rounded-full" />
+            </div>
+          </>
         )}
 
         {/* Editor + PDF split */}
         <div className="flex flex-1 overflow-hidden">
-          <div className="flex-1 flex flex-col border-r border-zinc-700 overflow-hidden">
-            <Editor value={editorValue} onChange={handleEditorChange} />
+          <div style={{ width: `${editorPct}%` }} className="flex flex-col overflow-hidden">
+            <Editor value={editorValue} onChange={handleEditorChange} diagnostics={diagnostics} />
           </div>
-          <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Editor/PDF resize handle */}
+          <div
+            className="w-1 shrink-0 bg-zinc-700 hover:bg-cyan-500 cursor-col-resize flex flex-col items-center justify-center gap-0.5 transition-colors"
+            onMouseDown={(e) => {
+              e.preventDefault()
+              const container = mainAreaRef.current
+              if (!container) return
+              const rect = container.getBoundingClientRect()
+              const onMove = (mv: MouseEvent) => {
+                const relX = mv.clientX - rect.left - (workspace ? sidebarWidth + 4 : 0)
+                const totalW = rect.width - (workspace ? sidebarWidth + 4 : 0) - 4
+                const pct = Math.min(80, Math.max(20, (relX / totalW) * 100))
+                setEditorPct(pct)
+              }
+              const onUp = () => {
+                window.removeEventListener('mousemove', onMove)
+                window.removeEventListener('mouseup', onUp)
+              }
+              window.addEventListener('mousemove', onMove)
+              window.addEventListener('mouseup', onUp)
+            }}
+          >
+            <span className="w-0.5 h-3 bg-zinc-500 rounded-full" />
+            <span className="w-0.5 h-3 bg-zinc-500 rounded-full" />
+          </div>
+          <div style={{ width: `${100 - editorPct}%` }} className="flex flex-col overflow-hidden">
             <PDFViewer
               pdfUrl={pdfUrl}
               isCompiling={isCompiling}
@@ -870,6 +966,14 @@ export default function VisLatexApp() {
           onSelectFile={handleDriveFileSelect}
           onSelectFolder={handleDriveFolderSelect}
           onClose={() => setShowDrivePanel(false)}
+        />
+      )}
+
+      {/* Google Sign-In setup modal */}
+      {showGoogleSetupModal && (
+        <GoogleSignInModal
+          onConfirm={handleGoogleSetupConfirm}
+          onCancel={() => setShowGoogleSetupModal(false)}
         />
       )}
     </div>
