@@ -4,6 +4,7 @@ interface LogPanelProps {
   log: string
   isOpen: boolean
   onToggle: () => void
+  onClearLog: () => void
   hasError: boolean
 }
 
@@ -14,33 +15,44 @@ function colorLine(line: string): string {
   return 'text-zinc-400'
 }
 
-export default function LogPanel({ log, isOpen, onToggle, hasError }: LogPanelProps) {
+export default function LogPanel({ log, isOpen, onToggle, onClearLog, hasError }: LogPanelProps) {
   const lines = log ? log.split('\n') : []
 
   return (
     <div className="border-t border-zinc-800 bg-zinc-900 shrink-0">
       {/* Header */}
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center gap-3 px-4 py-2 text-left hover:bg-zinc-800/50 transition-colors"
-      >
-        <span className="text-sm font-medium text-zinc-300">Compile Log</span>
-        {lines.length > 0 && (
-          <span className="text-xs text-zinc-500">{lines.length} lines</span>
-        )}
+      <div className="flex items-center gap-3 px-4 bg-zinc-900 border-zinc-800">
+        <button
+          onClick={onToggle}
+          className="flex-1 flex items-center gap-3 py-2 text-left hover:bg-zinc-800/50 transition-colors rounded"
+        >
+          <span className="text-sm font-medium text-zinc-300">Compile Log</span>
+          {lines.length > 0 && (
+            <span className="text-xs text-zinc-500">{lines.length} lines</span>
+          )}
+          {log && (
+            <span
+              className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                hasError
+                  ? 'bg-red-900/50 text-red-400'
+                  : 'bg-emerald-900/50 text-emerald-400'
+              }`}
+            >
+              {hasError ? 'Error' : 'OK'}
+            </span>
+          )}
+          <span className="ml-auto text-zinc-500 text-xs">{isOpen ? '▼' : '▲'}</span>
+        </button>
         {log && (
-          <span
-            className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-              hasError
-                ? 'bg-red-900/50 text-red-400'
-                : 'bg-emerald-900/50 text-emerald-400'
-            }`}
+          <button
+            onClick={onClearLog}
+            className="text-xs px-2 py-1 text-zinc-500 hover:text-red-400 transition-colors border border-transparent hover:border-red-900/50 rounded"
+            title="Clear log"
           >
-            {hasError ? 'Error' : 'OK'}
-          </span>
+            Clear
+          </button>
         )}
-        <span className="ml-auto text-zinc-500 text-xs">{isOpen ? '▼' : '▲'}</span>
-      </button>
+      </div>
 
       {/* Log content */}
       {isOpen && (

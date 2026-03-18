@@ -6,7 +6,7 @@ const nextConfig = {
     if (!isServer) {
       config.plugins.push(
         new MonacoWebpackPlugin({
-          languages: ['plaintext'],
+          languages: ['plaintext', 'latex'],
           filename: 'static/[name].worker.js',
         })
       )
