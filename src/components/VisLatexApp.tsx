@@ -6,6 +6,7 @@ import Editor from './Editor'
 import PDFViewer from './PDFViewer'
 import LogPanel from './LogPanel'
 import DropZone from './DropZone'
+import AssetPanel from './AssetPanel'
 
 const DEFAULT_LATEX = `\\documentclass{article}
 \\usepackage{amsmath}
@@ -43,13 +44,24 @@ And the quadratic formula:
 \\end{document}
 `
 
+const LS_SOURCE_KEY = 'vislatex_source'
+const LS_COMPILER_KEY = 'vislatex_compiler'
+
 export default function VisLatexApp() {
-  const [latexSource, setLatexSource] = useState(DEFAULT_LATEX)
+  const [latexSource, setLatexSource] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_LATEX
+    return localStorage.getItem(LS_SOURCE_KEY) ?? DEFAULT_LATEX
+  })
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [compileLog, setCompileLog] = useState('')
   const [isCompiling, setIsCompiling] = useState(false)
   const [compileError, setCompileError] = useState(false)
   const [logOpen, setLogOpen] = useState(false)
+  const [compiler, setCompiler] = useState<'pdflatex' | 'xelatex'>(() => {
+    if (typeof window === 'undefined') return 'xelatex'
+    const saved = localStorage.getItem(LS_COMPILER_KEY)
+    return saved === 'pdflatex' ? 'pdflatex' : 'xelatex'
+  })
   const mainFileName = 'main.tex'
   const [assets, setAssets] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
@@ -57,13 +69,14 @@ export default function VisLatexApp() {
   const pdfUrlRef = useRef<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const compile = useCallback(async (source: string, assetFiles: File[]) => {
+  const compile = useCallback(async (source: string, assetFiles: File[], selectedCompiler: 'pdflatex' | 'xelatex') => {
     if (!source.trim()) return
     setIsCompiling(true)
 
     try {
       const formData = new FormData()
       formData.append('mainTex', source)
+      formData.append('compiler', selectedCompiler)
       for (const asset of assetFiles) {
         formData.append('assets', asset)
       }
@@ -107,12 +120,25 @@ export default function VisLatexApp() {
     if (!latexSource.trim()) return
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
-      compile(latexSource, assets)
+      compile(latexSource, assets, compiler)
     }, 800)
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [latexSource, assets, compile])
+  }, [latexSource, assets, compiler, compile])
+
+  // Auto-save source to localStorage
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      localStorage.setItem(LS_SOURCE_KEY, latexSource)
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [latexSource])
+
+  // Persist compiler preference
+  useEffect(() => {
+    localStorage.setItem(LS_COMPILER_KEY, compiler)
+  }, [compiler])
 
   // Cleanup blob URL on unmount
   useEffect(() => {
@@ -142,6 +168,10 @@ export default function VisLatexApp() {
         return [...filtered, ...otherFiles]
       })
     }
+  }
+
+  const handleRemoveAsset = (name: string) => {
+    setAssets((prev) => prev.filter((f) => f.name !== name))
   }
 
   const handleDragEnter = (e: React.DragEvent) => {
@@ -185,9 +215,13 @@ export default function VisLatexApp() {
         pdfUrl={pdfUrl}
         isCompiling={isCompiling}
         compileError={compileError}
-        onCompile={() => compile(latexSource, assets)}
+        compiler={compiler}
+        onCompile={() => compile(latexSource, assets, compiler)}
         onFilesSelected={handleFilesSelected}
+        onCompilerChange={setCompiler}
       />
+
+      <AssetPanel assets={assets} onRemove={handleRemoveAsset} />
 
       <div className="flex flex-1 overflow-hidden">
         {/* Editor panel */}
@@ -205,6 +239,7 @@ export default function VisLatexApp() {
         log={compileLog}
         isOpen={logOpen}
         onToggle={() => setLogOpen((v) => !v)}
+        onClearLog={() => setCompileLog('')}
         hasError={compileError}
       />
 
@@ -212,3 +247,4 @@ export default function VisLatexApp() {
     </div>
   )
 }
+

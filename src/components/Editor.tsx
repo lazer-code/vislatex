@@ -34,7 +34,7 @@ export default function Editor({ value, onChange }: EditorProps) {
 
       const editor = monacoInstance.editor.create(containerRef.current, {
         value: valueRef.current,
-        language: 'plaintext',
+        language: 'latex',
         theme: 'vs-dark',
         minimap: { enabled: false },
         fontSize: 14,

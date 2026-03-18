@@ -5,6 +5,9 @@ RUN apt-get update && apt-get install -y \
     texlive-latex-recommended \
     texlive-latex-extra \
     texlive-fonts-recommended \
+    texlive-xetex \
+    texlive-lang-other \
+    fonts-freefont-otf \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

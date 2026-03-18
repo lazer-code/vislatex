@@ -7,8 +7,10 @@ interface TopBarProps {
   pdfUrl: string | null
   isCompiling: boolean
   compileError: boolean
+  compiler: 'pdflatex' | 'xelatex'
   onCompile: () => void
   onFilesSelected: (files: FileList) => void
+  onCompilerChange: (compiler: 'pdflatex' | 'xelatex') => void
 }
 
 function SpinnerIcon() {
@@ -41,8 +43,10 @@ export default function TopBar({
   pdfUrl,
   isCompiling,
   compileError,
+  compiler,
   onCompile,
   onFilesSelected,
+  onCompilerChange,
 }: TopBarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -86,17 +90,29 @@ export default function TopBar({
       {/* Status indicator */}
       <div className="w-5 flex items-center justify-center">{statusIndicator()}</div>
 
+      {/* Compiler selector */}
+      <select
+        value={compiler}
+        onChange={(e) => onCompilerChange(e.target.value as 'pdflatex' | 'xelatex')}
+        disabled={isCompiling}
+        className="text-sm px-2 py-1.5 rounded border border-zinc-600 bg-zinc-800 text-zinc-300 hover:border-cyan-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        title="Select LaTeX compiler"
+      >
+        <option value="xelatex">XeLaTeX</option>
+        <option value="pdflatex">pdfLaTeX</option>
+      </select>
+
       {/* Upload button */}
       <button
         onClick={() => fileInputRef.current?.click()}
         className="text-sm px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:border-cyan-500 hover:text-cyan-400 transition-colors"
       >
-        Upload .tex
+        Upload Files
       </button>
       <input
         ref={fileInputRef}
         type="file"
-        accept=".tex,.bib,.cls,.sty,.png,.jpg,.jpeg,.pdf"
+        accept=".tex,.bib,.cls,.sty,.png,.jpg,.jpeg,.svg,.pdf"
         multiple
         className="hidden"
         onChange={handleFileChange}

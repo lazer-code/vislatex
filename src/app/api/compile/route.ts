@@ -31,13 +31,16 @@ export async function POST(request: NextRequest) {
       await fs.writeFile(path.join(tmpDir, asset.name), Buffer.from(bytes))
     }
 
+    const compilerField = formData.get('compiler') as string | null
+    const compiler = compilerField === 'pdflatex' ? 'pdflatex' : 'xelatex'
+
     const args = ['-interaction=nonstopmode', '-no-shell-escape', `-output-directory=${tmpDir}`, 'main.tex']
     let log = ''
     let success = false
 
     try {
       for (let i = 0; i < 2; i++) {
-        const result = await execFileAsync('pdflatex', args, {
+        const result = await execFileAsync(compiler, args, {
           cwd: tmpDir,
           timeout: 30000,
           maxBuffer: 10 * 1024 * 1024,
@@ -48,7 +51,7 @@ export async function POST(request: NextRequest) {
     } catch (err: unknown) {
       const error = err as { code?: string; stdout?: string; message?: string }
       if (error.code === 'ENOENT') {
-        return NextResponse.json({ success: false, pdf: null, log: 'pdflatex not found. Please install TeX Live or run inside Docker.' })
+        return NextResponse.json({ success: false, pdf: null, log: `${compiler} not found. Please install TeX Live or run inside Docker.` })
       }
       log = error.stdout || error.message || 'Compilation failed'
       success = false
