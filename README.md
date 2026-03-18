@@ -15,6 +15,7 @@ A modern, real-time LaTeX document viewer and previewer built with Next.js.
 - 🗑️ **Clear log** button to reset the compile output panel
 - 🌐 **XeLaTeX** support for Unicode, Hebrew, and multilingual documents
 - ⬇️ **Download PDF** directly from the browser
+- 🔤 **Auto line alignment** — lines are automatically right-aligned when they begin with RTL script (Hebrew, Arabic) and left-aligned otherwise
 
 ## Prerequisites
 
@@ -56,6 +57,17 @@ Open [http://localhost:3000](http://localhost:3000).
 ## Writing Hebrew (RTL) with XeLaTeX
 
 Switch to **XeLaTeX** using the compiler dropdown, then use `polyglossia` and `bidi` for RTL support. The Docker image includes `texlive-xetex`, `texlive-lang-other`, and `fonts-freefont-otf` which provide the required packages and fonts.
+
+### Editor auto-alignment
+
+The editor automatically detects the dominant direction of each line and aligns it accordingly:
+
+- Lines whose **first meaningful character** is Hebrew or Arabic are **right-aligned**.
+- All other lines (Latin, numbers, blank, LaTeX commands, etc.) are **left-aligned**.
+- Leading whitespace, common list markers (`-`, `*`, `•`), and numbered prefixes (`1.`, `2)`) are skipped when determining the first meaningful character, so bullet lists still align by their text content.
+- Mixed lines (e.g. `"מאחר ויש $x=2$, ..."`) align based on the first character that is outside any markers.
+
+The alignment updates automatically as you type and when you move the cursor to a different line.
 
 ### Minimal Hebrew example
 

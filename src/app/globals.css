@@ -36,3 +36,19 @@ body {
   height: 100%;
   overflow: hidden;
 }
+
+/*
+ * Per-line direction classes applied by Editor.tsx to Monaco view-line elements.
+ * Monaco positions view-line divs absolutely; setting direction + text-align on
+ * the div causes the inline content span (containing token spans) to be rendered
+ * starting from the appropriate edge.
+ */
+.monaco-editor .view-lines .view-line.monaco-rtl-line {
+  direction: rtl;
+  text-align: right;
+}
+
+.monaco-editor .view-lines .view-line.monaco-ltr-line {
+  direction: ltr;
+  text-align: left;
+}
