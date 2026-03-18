@@ -7,6 +7,22 @@ import PDFViewer from './PDFViewer'
 import LogPanel from './LogPanel'
 import DropZone from './DropZone'
 import AssetPanel from './AssetPanel'
+import FileExplorer from './FileExplorer'
+import { WorkspaceState, WorkspaceFile, isTextFile } from '../types/workspace'
+
+// Minimal local types for the File System Access API (not yet in @types/lib)
+interface FSFileHandle {
+  kind: 'file'
+  getFile(): Promise<File>
+}
+interface FSDirHandle {
+  kind: 'directory'
+  name: string
+  entries(): AsyncIterableIterator<[string, FSFileHandle | FSDirHandle]>
+}
+interface WindowWithFSA {
+  showDirectoryPicker(): Promise<FSDirHandle>
+}
 
 const DEFAULT_LATEX = `\\documentclass{article}
 \\usepackage{amsmath}
@@ -62,62 +78,123 @@ export default function VisLatexApp() {
     const saved = localStorage.getItem(LS_COMPILER_KEY)
     return saved === 'pdflatex' ? 'pdflatex' : 'xelatex'
   })
-  const mainFileName = 'main.tex'
   const [assets, setAssets] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
 
+  // ── Workspace state ────────────────────────────────────────────────────
+  const [workspace, setWorkspace] = useState<WorkspaceState | null>(null)
+  const [activeFilePath, setActiveFilePath] = useState<string | null>(null)
+  const [mainTexPath, setMainTexPath] = useState<string | null>(null)
+
+  // Refs so compile() can always read the latest values without restarts
+  const workspaceRef = useRef<WorkspaceState | null>(null)
+  const mainTexPathRef = useRef<string | null>(null)
+  workspaceRef.current = workspace
+  mainTexPathRef.current = mainTexPath
+
   const pdfUrlRef = useRef<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)
 
-  const compile = useCallback(async (source: string, assetFiles: File[], selectedCompiler: 'pdflatex' | 'xelatex') => {
-    if (!source.trim()) return
-    setIsCompiling(true)
+  // ── Compile ─────────────────────────────────────────────────────────────
+  const compile = useCallback(
+    async (
+      source: string,
+      assetFiles: File[],
+      selectedCompiler: 'pdflatex' | 'xelatex'
+    ) => {
+      const ws = workspaceRef.current
+      const mtp = mainTexPathRef.current
 
-    try {
-      const formData = new FormData()
-      formData.append('mainTex', source)
-      formData.append('compiler', selectedCompiler)
-      for (const asset of assetFiles) {
-        formData.append('assets', asset)
-      }
-
-      const res = await fetch('/api/compile', {
-        method: 'POST',
-        body: formData,
-      })
-
-      const data: { success: boolean; pdf: string | null; log: string } = await res.json()
-
-      setCompileLog(data.log ?? '')
-      setCompileError(!data.success)
-
-      if (data.pdf) {
-        const bytes = Uint8Array.from(atob(data.pdf), (c) => c.charCodeAt(0))
-        const blob = new Blob([bytes], { type: 'application/pdf' })
-        const url = URL.createObjectURL(blob)
-
-        if (pdfUrlRef.current) {
-          URL.revokeObjectURL(pdfUrlRef.current)
+      if (ws && mtp) {
+        // ── Project-aware compile ──────────────────────────────────────
+        const mainContent = ws.files.find((f) => f.path === mtp)?.content ?? ''
+        if (!mainContent.trim()) return
+        setIsCompiling(true)
+        try {
+          const formData = new FormData()
+          formData.append('compiler', selectedCompiler)
+          formData.append('mainPath', mtp)
+          for (const file of ws.files) {
+            const blob =
+              file.blob ?? new Blob([file.content ?? ''], { type: 'text/plain' })
+            formData.append('files', blob, file.name)
+            formData.append('paths', file.path)
+          }
+          const res = await fetch('/api/compile', { method: 'POST', body: formData })
+          const data: { success: boolean; pdf: string | null; log: string } =
+            await res.json()
+          setCompileLog(data.log ?? '')
+          setCompileError(!data.success)
+          if (data.pdf) {
+            const bytes = Uint8Array.from(atob(data.pdf), (c) => c.charCodeAt(0))
+            const blob = new Blob([bytes], { type: 'application/pdf' })
+            const url = URL.createObjectURL(blob)
+            if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
+            pdfUrlRef.current = url
+            setPdfUrl(url)
+          } else {
+            setPdfUrl(null)
+            pdfUrlRef.current = null
+            setLogOpen(true)
+          }
+        } catch (err) {
+          setCompileLog(err instanceof Error ? err.message : 'Network error')
+          setCompileError(true)
+          setLogOpen(true)
+        } finally {
+          setIsCompiling(false)
         }
-        pdfUrlRef.current = url
-        setPdfUrl(url)
-      } else {
-        setPdfUrl(null)
-        pdfUrlRef.current = null
-        setLogOpen(true)
+        return
       }
-    } catch (err) {
-      setCompileLog(err instanceof Error ? err.message : 'Network error')
-      setCompileError(true)
-      setLogOpen(true)
-    } finally {
-      setIsCompiling(false)
-    }
-  }, [])
 
-  // Debounced auto-compile
+      // ── Single-file compile (legacy) ───────────────────────────────────
+      if (!source.trim()) return
+      setIsCompiling(true)
+      try {
+        const formData = new FormData()
+        formData.append('mainTex', source)
+        formData.append('compiler', selectedCompiler)
+        for (const asset of assetFiles) {
+          formData.append('assets', asset)
+        }
+        const res = await fetch('/api/compile', { method: 'POST', body: formData })
+        const data: { success: boolean; pdf: string | null; log: string } =
+          await res.json()
+        setCompileLog(data.log ?? '')
+        setCompileError(!data.success)
+        if (data.pdf) {
+          const bytes = Uint8Array.from(atob(data.pdf), (c) => c.charCodeAt(0))
+          const blob = new Blob([bytes], { type: 'application/pdf' })
+          const url = URL.createObjectURL(blob)
+          if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
+          pdfUrlRef.current = url
+          setPdfUrl(url)
+        } else {
+          setPdfUrl(null)
+          pdfUrlRef.current = null
+          setLogOpen(true)
+        }
+      } catch (err) {
+        setCompileLog(err instanceof Error ? err.message : 'Network error')
+        setCompileError(true)
+        setLogOpen(true)
+      } finally {
+        setIsCompiling(false)
+      }
+    },
+    []
+  )
+
+  // Debounced auto-compile — triggers on any content or workspace change
   useEffect(() => {
-    if (!latexSource.trim()) return
+    if (workspace) {
+      if (!mainTexPath) return
+      const src = workspace.files.find((f) => f.path === mainTexPath)?.content ?? ''
+      if (!src.trim()) return
+    } else {
+      if (!latexSource.trim()) return
+    }
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
       compile(latexSource, assets, compiler)
@@ -125,15 +202,16 @@ export default function VisLatexApp() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [latexSource, assets, compiler, compile])
+  }, [latexSource, assets, compiler, workspace, mainTexPath, compile])
 
-  // Auto-save source to localStorage
+  // Auto-save source to localStorage (single-file mode only)
   useEffect(() => {
+    if (workspace) return
     const timer = setTimeout(() => {
       localStorage.setItem(LS_SOURCE_KEY, latexSource)
     }, 1000)
     return () => clearTimeout(timer)
-  }, [latexSource])
+  }, [latexSource, workspace])
 
   // Persist compiler preference
   useEffect(() => {
@@ -147,8 +225,300 @@ export default function VisLatexApp() {
     }
   }, [])
 
+  // ── Workspace helpers ────────────────────────────────────────────────────
+
+  /** Initialise workspace state from an array of WorkspaceFile entries. */
+  const initWorkspace = useCallback((name: string, files: WorkspaceFile[]) => {
+    const mainTex =
+      files.find((f) => f.name === 'main.tex') ??
+      files.find((f) => f.name.endsWith('.tex'))
+    setWorkspace({ name, files, extraFolders: [] })
+    setMainTexPath(mainTex?.path ?? null)
+    setActiveFilePath(mainTex?.path ?? null)
+    setPdfUrl(null)
+    pdfUrlRef.current = null
+    setCompileLog('')
+    setCompileError(false)
+  }, [])
+
+  /** Load workspace from File System Access API directory handle. */
+  const loadFromDirectoryHandle = useCallback(
+    async (dirHandle: FSDirHandle) => {
+      const files: WorkspaceFile[] = []
+
+      async function walk(handle: FSDirHandle, prefix: string) {
+        for await (const [name, entry] of handle.entries()) {
+          const relPath = prefix ? `${prefix}/${name}` : name
+          if (entry.kind === 'file') {
+            const file = await (entry as FSFileHandle).getFile()
+            const wsFile: WorkspaceFile = {
+              type: 'file',
+              path: relPath,
+              name: file.name,
+            }
+            if (isTextFile(file.name)) {
+              wsFile.content = await file.text()
+            } else {
+              wsFile.blob = file
+            }
+            files.push(wsFile)
+          } else if (entry.kind === 'directory') {
+            await walk(entry as FSDirHandle, relPath)
+          }
+        }
+      }
+
+      await walk(dirHandle, '')
+      initWorkspace(dirHandle.name, files)
+    },
+    [initWorkspace]
+  )
+
+  /** Load workspace from a webkitdirectory FileList. */
+  const loadFromFileList = useCallback(
+    async (fileList: FileList) => {
+      const fileArray = Array.from(fileList)
+      if (fileArray.length === 0) return
+
+      // webkitRelativePath = "rootFolder/sub/file.tex"
+      const firstRelPath = fileArray[0].webkitRelativePath
+      const rootFolderName = firstRelPath.split('/')[0]
+
+      const files: WorkspaceFile[] = []
+      for (const file of fileArray) {
+        const fullRel = file.webkitRelativePath
+        const relPath = fullRel.startsWith(rootFolderName + '/')
+          ? fullRel.slice(rootFolderName.length + 1)
+          : fullRel
+        if (!relPath) continue
+
+        const wsFile: WorkspaceFile = { type: 'file', path: relPath, name: file.name }
+        if (isTextFile(file.name)) {
+          wsFile.content = await file.text()
+        } else {
+          wsFile.blob = file
+        }
+        files.push(wsFile)
+      }
+      initWorkspace(rootFolderName, files)
+    },
+    [initWorkspace]
+  )
+
+  /** Called by the "Open Folder" button. */
+  const handleOpenFolder = useCallback(async () => {
+    if (typeof window !== 'undefined' && 'showDirectoryPicker' in window) {
+      try {
+        const dirHandle = await (window as unknown as WindowWithFSA).showDirectoryPicker()
+        await loadFromDirectoryHandle(dirHandle)
+        return
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return
+        // Fall through to webkitdirectory fallback
+      }
+    }
+    folderInputRef.current?.click()
+  }, [loadFromDirectoryHandle])
+
+  const handleFolderInputChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    if (e.target.files && e.target.files.length > 0) {
+      await loadFromFileList(e.target.files)
+    }
+    e.target.value = ''
+  }
+
+  // ── Editor value ──────────────────────────────────────────────────────────
+  const editorValue =
+    workspace && activeFilePath
+      ? workspace.files.find((f) => f.path === activeFilePath)?.content ?? ''
+      : latexSource
+
+  const handleEditorChange = (value: string) => {
+    if (workspace && activeFilePath) {
+      setWorkspace((prev) =>
+        prev
+          ? {
+              ...prev,
+              files: prev.files.map((f) =>
+                f.path === activeFilePath ? { ...f, content: value } : f
+              ),
+            }
+          : null
+      )
+    } else {
+      setLatexSource(value)
+    }
+  }
+
+  // ── File/folder management ────────────────────────────────────────────────
+
+  const handleFileClick = (path: string) => {
+    setActiveFilePath(path)
+  }
+
+  const handleNewFile = (parentPath: string | null, name: string) => {
+    const filePath = parentPath ? `${parentPath}/${name}` : name
+    const newFile: WorkspaceFile = { type: 'file', path: filePath, name, content: '' }
+    setWorkspace((prev) =>
+      prev ? { ...prev, files: [...prev.files, newFile] } : prev
+    )
+    setActiveFilePath(filePath)
+    if (name.endsWith('.tex') && !mainTexPath) {
+      setMainTexPath(filePath)
+    }
+  }
+
+  const handleNewFolder = (parentPath: string | null, name: string) => {
+    const folderPath = parentPath ? `${parentPath}/${name}` : name
+    setWorkspace((prev) =>
+      prev
+        ? { ...prev, extraFolders: [...prev.extraFolders, folderPath] }
+        : prev
+    )
+  }
+
+  const handleRename = (
+    oldPath: string,
+    newName: string,
+    type: 'file' | 'folder'
+  ) => {
+    if (!workspace) return
+
+    if (type === 'file') {
+      const parentDir = oldPath.includes('/')
+        ? oldPath.substring(0, oldPath.lastIndexOf('/'))
+        : null
+      const newPath = parentDir ? `${parentDir}/${newName}` : newName
+      setWorkspace((prev) =>
+        prev
+          ? {
+              ...prev,
+              files: prev.files.map((f) =>
+                f.path === oldPath ? { ...f, path: newPath, name: newName } : f
+              ),
+            }
+          : prev
+      )
+      if (activeFilePath === oldPath) setActiveFilePath(newPath)
+      if (mainTexPath === oldPath) setMainTexPath(newPath)
+    } else {
+      // Rename folder: update all paths that start with oldPath
+      const parentDir = oldPath.includes('/')
+        ? oldPath.substring(0, oldPath.lastIndexOf('/'))
+        : null
+      const newPath = parentDir ? `${parentDir}/${newName}` : newName
+
+      const rewritePath = (p: string) => {
+        if (p === oldPath) return newPath
+        if (p.startsWith(oldPath + '/')) return newPath + p.slice(oldPath.length)
+        return p
+      }
+      setWorkspace((prev) =>
+        prev
+          ? {
+              ...prev,
+              files: prev.files.map((f) => ({
+                ...f,
+                path: rewritePath(f.path),
+              })),
+              extraFolders: prev.extraFolders.map(rewritePath),
+            }
+          : prev
+      )
+      if (activeFilePath) setActiveFilePath(rewritePath(activeFilePath))
+      if (mainTexPath) setMainTexPath(rewritePath(mainTexPath))
+    }
+  }
+
+  const handleDelete = (targetPath: string, type: 'file' | 'folder') => {
+    if (!workspace) return
+    if (!confirm(`Delete ${type} "${targetPath}"?`)) return
+
+    if (type === 'file') {
+      setWorkspace((prev) =>
+        prev
+          ? { ...prev, files: prev.files.filter((f) => f.path !== targetPath) }
+          : prev
+      )
+      if (activeFilePath === targetPath) {
+        const remaining = workspace.files.filter((f) => f.path !== targetPath)
+        setActiveFilePath(remaining.length > 0 ? remaining[0].path : null)
+      }
+      if (mainTexPath === targetPath) setMainTexPath(null)
+    } else {
+      const prefix = targetPath + '/'
+      setWorkspace((prev) =>
+        prev
+          ? {
+              ...prev,
+              files: prev.files.filter(
+                (f) => f.path !== targetPath && !f.path.startsWith(prefix)
+              ),
+              extraFolders: prev.extraFolders.filter(
+                (fp) => fp !== targetPath && !fp.startsWith(prefix)
+              ),
+            }
+          : prev
+      )
+      if (
+        activeFilePath &&
+        (activeFilePath === targetPath || activeFilePath.startsWith(prefix))
+      ) {
+        setActiveFilePath(null)
+      }
+      if (
+        mainTexPath &&
+        (mainTexPath === targetPath || mainTexPath.startsWith(prefix))
+      ) {
+        setMainTexPath(null)
+      }
+    }
+  }
+
+  const handleSetMainTex = (path: string) => {
+    setMainTexPath(path)
+    setActiveFilePath(path)
+  }
+
+  // ── Legacy file-upload handlers (single-file / drag-drop mode) ───────────
+
   const handleFilesSelected = (files: FileList) => {
     const fileArray = Array.from(files)
+
+    if (workspace) {
+      // In workspace mode: add dropped/uploaded files to workspace using
+      // async file.text() to avoid FileReader callback race conditions.
+      void (async () => {
+        const newFiles: WorkspaceFile[] = []
+        for (const f of fileArray) {
+          const wsFile: WorkspaceFile = { type: 'file', path: f.name, name: f.name }
+          if (isTextFile(f.name)) {
+            wsFile.content = await f.text()
+          } else {
+            wsFile.blob = f
+          }
+          newFiles.push(wsFile)
+        }
+        setWorkspace((prev) =>
+          prev
+            ? {
+                ...prev,
+                files: [
+                  ...prev.files.filter(
+                    (wf) => !newFiles.some((nf) => nf.path === wf.path)
+                  ),
+                  ...newFiles,
+                ],
+              }
+            : prev
+        )
+      })()
+      return
+    }
+
+    // Legacy single-file mode
     const texFile = fileArray.find((f) => f.name.endsWith('.tex'))
     const otherFiles = fileArray.filter((f) => !f.name.endsWith('.tex'))
 
@@ -202,6 +572,15 @@ export default function VisLatexApp() {
     handleFilesSelected(files)
   }
 
+  // ── TopBar file name display ─────────────────────────────────────────────
+  const displayFileName = workspace
+    ? activeFilePath
+      ? activeFilePath.split('/').pop() ?? 'main.tex'
+      : mainTexPath
+        ? mainTexPath.split('/').pop() ?? 'main.tex'
+        : workspace.name
+    : 'main.tex'
+
   return (
     <div
       className="flex flex-col h-screen bg-zinc-950"
@@ -211,7 +590,7 @@ export default function VisLatexApp() {
       onDrop={handleDrop}
     >
       <TopBar
-        fileName={mainFileName}
+        fileName={displayFileName}
         pdfUrl={pdfUrl}
         isCompiling={isCompiling}
         compileError={compileError}
@@ -219,19 +598,52 @@ export default function VisLatexApp() {
         onCompile={() => compile(latexSource, assets, compiler)}
         onFilesSelected={handleFilesSelected}
         onCompilerChange={setCompiler}
+        onOpenFolder={handleOpenFolder}
       />
 
-      <AssetPanel assets={assets} onRemove={handleRemoveAsset} />
+      {/* Hidden folder input for webkitdirectory fallback */}
+      <input
+        ref={folderInputRef}
+        type="file"
+        // @ts-expect-error webkitdirectory is non-standard but widely supported
+        webkitdirectory=""
+        directory=""
+        multiple
+        className="hidden"
+        onChange={handleFolderInputChange}
+      />
+
+      {/* Asset panel only shown in single-file mode */}
+      {!workspace && <AssetPanel assets={assets} onRemove={handleRemoveAsset} />}
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Editor panel */}
-        <div className="w-1/2 flex flex-col border-r border-zinc-700 overflow-hidden">
-          <Editor value={latexSource} onChange={setLatexSource} />
-        </div>
+        {/* File Explorer sidebar — shown when a workspace is open */}
+        {workspace && (
+          <div className="w-56 shrink-0 overflow-hidden">
+            <FileExplorer
+              workspaceName={workspace.name}
+              files={workspace.files}
+              extraFolders={workspace.extraFolders}
+              activeFilePath={activeFilePath}
+              mainTexPath={mainTexPath}
+              onFileClick={handleFileClick}
+              onNewFile={handleNewFile}
+              onNewFolder={handleNewFolder}
+              onRename={handleRename}
+              onDelete={handleDelete}
+              onSetMainTex={handleSetMainTex}
+            />
+          </div>
+        )}
 
-        {/* PDF preview panel */}
-        <div className="w-1/2 flex flex-col overflow-hidden">
-          <PDFViewer pdfUrl={pdfUrl} />
+        {/* Editor + PDF split */}
+        <div className="flex flex-1 overflow-hidden">
+          <div className="flex-1 flex flex-col border-r border-zinc-700 overflow-hidden">
+            <Editor value={editorValue} onChange={handleEditorChange} />
+          </div>
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <PDFViewer pdfUrl={pdfUrl} />
+          </div>
         </div>
       </div>
 
