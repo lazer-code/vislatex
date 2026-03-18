@@ -1,3 +1,18 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {}
+const MonacoWebpackPlugin = require('monaco-editor-webpack-plugin')
+
+const nextConfig = {
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.plugins.push(
+        new MonacoWebpackPlugin({
+          languages: ['plaintext'],
+          filename: 'static/[name].worker.js',
+        })
+      )
+    }
+    return config
+  },
+}
+
 module.exports = nextConfig

@@ -56,7 +56,9 @@ export async function POST(request: NextRequest) {
 
     try {
       log = await fs.readFile(path.join(tmpDir, 'main.log'), 'utf8')
-    } catch {}
+    } catch {
+      // .log file may not exist if pdflatex wasn't invoked (e.g. ENOENT before compile)
+    }
 
     let pdfBase64: string | null = null
     try {

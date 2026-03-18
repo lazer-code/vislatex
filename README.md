@@ -2,8 +2,6 @@
 
 A modern, real-time LaTeX document viewer and previewer built with Next.js 14.
 
-![VisLaTeX Screenshot](screenshot-placeholder.png)
-
 ## Features
 
 - 🖊️ **Monaco Editor** with syntax awareness and code editing features
