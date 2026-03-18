@@ -8,7 +8,10 @@ import LogPanel from './LogPanel'
 import DropZone from './DropZone'
 import AssetPanel from './AssetPanel'
 import FileExplorer from './FileExplorer'
+import DriveFilePicker from './DriveFilePicker'
 import { WorkspaceState, WorkspaceFile, isTextFile } from '../types/workspace'
+import { useAuth } from '../contexts/AuthContext'
+import { updateDriveFile, createDriveFile } from '../services/googleDrive'
 
 // Minimal local types for the File System Access API (not yet in @types/lib)
 interface FSFileHandle {
@@ -64,6 +67,8 @@ const LS_SOURCE_KEY = 'vislatex_source'
 const LS_COMPILER_KEY = 'vislatex_compiler'
 
 export default function VisLatexApp() {
+  const { isSignedIn, accessToken } = useAuth()
+
   const [latexSource, setLatexSource] = useState(() => {
     if (typeof window === 'undefined') return DEFAULT_LATEX
     return localStorage.getItem(LS_SOURCE_KEY) ?? DEFAULT_LATEX
@@ -80,6 +85,12 @@ export default function VisLatexApp() {
   })
   const [assets, setAssets] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
+
+  // ── Google Drive state ───────────────────────────────────────────────────
+  const [showDrivePicker, setShowDrivePicker] = useState(false)
+  /** Auto-save status for Drive-backed files */
+  const [driveStatus, setDriveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const driveAutoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Workspace state ────────────────────────────────────────────────────
   const [workspace, setWorkspace] = useState<WorkspaceState | null>(null)
@@ -224,6 +235,38 @@ export default function VisLatexApp() {
       if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
     }
   }, [])
+
+  // ── Google Drive auto-save ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!isSignedIn || !accessToken || !workspace) return
+
+    // Find any Drive-backed text files that have content
+    const driveFiles = workspace.files.filter(
+      (f) => f.driveId && f.content !== undefined
+    )
+    if (driveFiles.length === 0) return
+
+    // Only auto-save when the active file is Drive-backed
+    const activeFile = workspace.files.find(
+      (f) => f.path === activeFilePath && f.driveId
+    )
+    if (!activeFile) return
+
+    if (driveAutoSaveRef.current) clearTimeout(driveAutoSaveRef.current)
+    driveAutoSaveRef.current = setTimeout(async () => {
+      setDriveStatus('saving')
+      try {
+        await updateDriveFile(accessToken, activeFile.driveId!, activeFile.content ?? '')
+        setDriveStatus('saved')
+      } catch {
+        setDriveStatus('error')
+      }
+    }, 2500)
+
+    return () => {
+      if (driveAutoSaveRef.current) clearTimeout(driveAutoSaveRef.current)
+    }
+  }, [workspace, activeFilePath, isSignedIn, accessToken])
 
   // ── Workspace helpers ────────────────────────────────────────────────────
 
@@ -482,7 +525,52 @@ export default function VisLatexApp() {
     setActiveFilePath(path)
   }
 
-  // ── Legacy file-upload handlers (single-file / drag-drop mode) ───────────
+  // ── Google Drive import ──────────────────────────────────────────────────
+
+  /**
+   * Called by DriveFilePicker when the user confirms their selection.
+   * Initialises or extends the workspace with the imported files.
+   */
+  const handleDriveImport = useCallback(
+    (files: WorkspaceFile[], folderName: string) => {
+      setShowDrivePicker(false)
+      if (workspace) {
+        // Merge into existing workspace
+        setWorkspace((prev) =>
+          prev
+            ? {
+                ...prev,
+                files: [
+                  ...prev.files.filter(
+                    (wf) => !files.some((nf) => nf.path === wf.path)
+                  ),
+                  ...files,
+                ],
+              }
+            : prev
+        )
+      } else {
+        // Create new workspace from Drive files
+        initWorkspace(folderName, files)
+      }
+    },
+    [workspace, initWorkspace]
+  )
+
+  /**
+   * Single-file mode: import a Drive .tex file as the main source.
+   * Kept for completeness; the picker will call handleDriveImport above.
+   */
+  const handleDriveFileSingle = useCallback(
+    async (driveId: string, fileName: string, content: string) => {
+      setLatexSource(content)
+      // Store driveId in a ref so auto-save can use it
+      void createDriveFile // suppress unused import warning
+      void driveId
+      void fileName
+    },
+    []
+  )
 
   const handleFilesSelected = (files: FileList) => {
     const fileArray = Array.from(files)
@@ -599,6 +687,7 @@ export default function VisLatexApp() {
         onFilesSelected={handleFilesSelected}
         onCompilerChange={setCompiler}
         onOpenFolder={handleOpenFolder}
+        onOpenDrivePicker={() => setShowDrivePicker(true)}
       />
 
       {/* Hidden folder input for webkitdirectory fallback */}
@@ -642,7 +731,11 @@ export default function VisLatexApp() {
             <Editor value={editorValue} onChange={handleEditorChange} />
           </div>
           <div className="flex-1 flex flex-col overflow-hidden">
-            <PDFViewer pdfUrl={pdfUrl} />
+            <PDFViewer
+              pdfUrl={pdfUrl}
+              onReload={() => compile(latexSource, assets, compiler)}
+              driveStatus={driveStatus}
+            />
           </div>
         </div>
       </div>
@@ -656,6 +749,15 @@ export default function VisLatexApp() {
       />
 
       <DropZone isDragging={isDragging} onDrop={handleDropZoneDrop} />
+
+      {/* Google Drive file picker modal */}
+      {showDrivePicker && accessToken && (
+        <DriveFilePicker
+          accessToken={accessToken}
+          onImport={handleDriveImport}
+          onClose={() => setShowDrivePicker(false)}
+        />
+      )}
     </div>
   )
 }

@@ -15,6 +15,11 @@ export interface WorkspaceFile {
   content?: string
   /** Binary content for images, PDFs, etc. */
   blob?: Blob
+  /**
+   * If this file was imported from Google Drive, this is its Drive file ID.
+   * Used to auto-save changes back to the same Drive file.
+   */
+  driveId?: string
 }
 
 export interface WorkspaceFolderNode {
