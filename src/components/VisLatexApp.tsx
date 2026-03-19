@@ -42,38 +42,56 @@ interface WindowWithFSA {
   }): Promise<FSFileHandleWritable>
 }
 
-const DEFAULT_LATEX = `\\documentclass{article}
+const DEFAULT_LATEX = `\\documentclass[a4paper]{article}
+
+%%%% Hebrew / XeLaTeX setup %%%%
+\\usepackage{fontspec}
+\\usepackage{polyglossia}
+
+\\setmainlanguage{hebrew}
+\\setotherlanguage{english}
+
+% Hebrew fonts — adjust for your system if needed:
+% Windows/MiKTeX: Arial is used below.
+% Linux/TeX Live: replace Arial with FreeSerif and Courier New with FreeMono.
+\\newfontfamily\\hebrewfont[Script=Hebrew]{Arial}
+\\newfontfamily\\hebrewfonttt[Script=Hebrew]{Courier New}
+\\newfontfamily\\hebrewfontsf[Script=Hebrew]{Arial}
+
+% Shorthand for English words inside Hebrew text
+\\newcommand{\\R}[1]{\\textenglish{#1}}
+
+%%%% Packages %%%%
+\\usepackage[a4paper,top=3cm,bottom=2cm,left=2cm,right=2cm]{geometry}
+\\setlength{\\parskip}{1em}
+\\setlength{\\parindent}{0pt}
+
 \\usepackage{amsmath}
 \\usepackage{amssymb}
 
-\\title{Hello, VisLaTeX!}
-\\author{Your Name}
-\\date{\\today}
-
 \\begin{document}
 
-\\maketitle
+\\section*{ברוכים הבאים ל-\\R{VisLaTeX}}
 
-\\section{Introduction}
-Welcome to \\textbf{VisLaTeX} — a modern LaTeX previewer.
+\\R{VisLaTeX} הוא עורך \\R{LaTeX} מודרני עם תצוגה מקדימה בזמן אמת.
+ניתן לכתוב בעברית ובאנגלית בצורה שקופה.
 
-\\section{Mathematics}
-Here is a famous equation:
-\\[
-  E = mc^2
-\\]
+\\section*{מתמטיקה}
 
-And the quadratic formula:
+הנוסחה הריבועית:
 \\[
   x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}
 \\]
 
-\\section{Lists}
-\\begin{itemize}
-  \\item Type LaTeX in the left panel
-  \\item See the PDF update automatically
-  \\item Download your compiled PDF
-\\end{itemize}
+דוגמה לאי-שוויון:
+אם $a, b \\in (c, d)$ אזי $|a - b| < d - c$.
+
+\\section*{English Section}
+
+\\begin{english}
+  You can seamlessly mix \\textbf{English} and \\texthebrew{עברית} in the same document.
+  Math works in both directions: $E = mc^2$.
+\\end{english}
 
 \\end{document}
 `
