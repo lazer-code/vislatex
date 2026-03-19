@@ -10,6 +10,7 @@ import FileExplorer from './FileExplorer'
 import GoogleDrivePanel from './GoogleDrivePanel'
 import type { DriveFile } from './GoogleDrivePanel'
 import GoogleSignInModal from './GoogleSignInModal'
+import MiKTeXWarningModal from './MiKTeXWarningModal'
 import { WorkspaceState, WorkspaceFile, isTextFile } from '../types/workspace'
 
 // Minimal local types for the File System Access API (not yet in @types/lib)
@@ -176,6 +177,7 @@ export default function VisLatexApp() {
   const [driveAutoSaveStatus, setDriveAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [showDrivePanel, setShowDrivePanel] = useState(false)
   const [showGoogleSetupModal, setShowGoogleSetupModal] = useState(false)
+  const [showMiKTeXWarning, setShowMiKTeXWarning] = useState(false)
   const tokenClientRef = useRef<TokenClient | null>(null)
   const driveAutoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const compile = useCallback(
@@ -314,6 +316,16 @@ export default function VisLatexApp() {
     return () => {
       if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
     }
+  }, [])
+
+  // Check for MiKTeX / LaTeX installation on startup (Electron only)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.electronAPI?.checkLatex) return
+    window.electronAPI.checkLatex().then((found) => {
+      if (!found) setShowMiKTeXWarning(true)
+    }).catch((err) => {
+      console.error('[vislatex] LaTeX detection failed:', err)
+    })
   }, [])
 
   // ── Google auth logic ─────────────────────────────────────────────────────
@@ -983,6 +995,11 @@ export default function VisLatexApp() {
           onConfirm={handleGoogleSetupConfirm}
           onCancel={() => setShowGoogleSetupModal(false)}
         />
+      )}
+
+      {/* MiKTeX / LaTeX not found warning */}
+      {showMiKTeXWarning && (
+        <MiKTeXWarningModal onDismiss={() => setShowMiKTeXWarning(false)} />
       )}
     </div>
   )

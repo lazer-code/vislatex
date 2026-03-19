@@ -24,4 +24,8 @@ interface CompileResult {
 contextBridge.exposeInMainWorld('electronAPI', {
   compile: (payload: CompileRequest): Promise<CompileResult> =>
     ipcRenderer.invoke('compile', payload),
+  checkLatex: (): Promise<boolean> =>
+    ipcRenderer.invoke('check-latex'),
+  openExternal: (url: string): void =>
+    ipcRenderer.send('open-external', url),
 })
