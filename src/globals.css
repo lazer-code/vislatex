@@ -39,33 +39,19 @@ body {
 
 /*
  * Per-line direction classes applied by Editor.tsx to Monaco view-line elements.
- * Monaco positions view-line divs absolutely; setting direction + text-align on
- * the div causes the inline content span (containing token spans) to be rendered
- * starting from the appropriate edge.
+ * We only use text-align to visually right-anchor RTL lines.  We intentionally
+ * do NOT change the `direction` property on view-line elements because Monaco's
+ * internal hit-testing (click → caret position) uses its own glyph metrics in
+ * LTR coordinate space; overriding `direction` on the element causes the visual
+ * text position to diverge from Monaco's calculated position, which breaks
+ * click/caret placement on all non-empty lines.
  */
 .monaco-editor .view-lines .view-line.monaco-rtl-line {
-  direction: rtl;
   text-align: right;
-  /* Issue #5: prevent right-aligned text from visually overlapping the resize
-     handle strip at the right edge of the editor pane. */
+  /* Prevent right-aligned text from visually overlapping the resize handle. */
   padding-right: 6px;
 }
 
-/* Issue #4 & #6: propagate RTL direction into the content span so that the
-   browser Unicode Bidirectional Algorithm orders mixed Hebrew + math correctly.
-   `unicode-bidi: embed` creates an additional embedding level using the
-   inherited RTL direction, which keeps Hebrew on the right and LTR math runs
-   (e.g. $…$) embedded to its left as expected.
-   `display: inline-block` with `min-width: 100%` lets the block fill the
-   view-line width so the RTL paragraph is anchored to the right edge. */
-.monaco-editor .view-lines .view-line.monaco-rtl-line > span {
-  display: inline-block;
-  min-width: 100%;
-  direction: rtl;
-  unicode-bidi: embed;
-}
-
 .monaco-editor .view-lines .view-line.monaco-ltr-line {
-  direction: ltr;
   text-align: left;
 }

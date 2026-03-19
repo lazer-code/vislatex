@@ -79,6 +79,7 @@ And the quadratic formula:
 
 const LS_SOURCE_KEY = 'vislatex_source'
 const LS_COMPILER_KEY = 'vislatex_compiler'
+const LS_AUTO_COMPILE_KEY = 'vislatex_auto_compile'
 
 function parseCompileLog(log: string): Array<{ line: number; message: string; severity: 'error' | 'warning' }> {
   const diags: Array<{ line: number; message: string; severity: 'error' | 'warning' }> = []
@@ -117,6 +118,10 @@ export default function VisLatexApp() {
     if (typeof window === 'undefined') return 'xelatex'
     const saved = localStorage.getItem(LS_COMPILER_KEY)
     return saved === 'pdflatex' ? 'pdflatex' : 'xelatex'
+  })
+  const [autoCompile, setAutoCompile] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem(LS_AUTO_COMPILE_KEY) === 'true'
   })
   const [assets, setAssets] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
@@ -245,8 +250,9 @@ export default function VisLatexApp() {
     []
   )
 
-  // Debounced auto-compile — triggers on any content or workspace change
+  // Debounced auto-compile — only triggers when autoCompile is enabled
   useEffect(() => {
+    if (!autoCompile) return
     if (workspace) {
       if (!mainTexPath) return
       const src = workspace.files.find((f) => f.path === mainTexPath)?.content ?? ''
@@ -261,7 +267,7 @@ export default function VisLatexApp() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [latexSource, assets, compiler, workspace, mainTexPath, compile])
+  }, [autoCompile, latexSource, assets, compiler, workspace, mainTexPath, compile])
 
   // Auto-save source to localStorage (single-file mode only)
   useEffect(() => {
@@ -276,6 +282,11 @@ export default function VisLatexApp() {
   useEffect(() => {
     localStorage.setItem(LS_COMPILER_KEY, compiler)
   }, [compiler])
+
+  // Persist auto-compile preference
+  useEffect(() => {
+    localStorage.setItem(LS_AUTO_COMPILE_KEY, String(autoCompile))
+  }, [autoCompile])
 
   // Cleanup blob URL on unmount
   useEffect(() => {
@@ -770,9 +781,11 @@ export default function VisLatexApp() {
         compileError={compileError}
         compiler={compiler}
         hasWorkspace={!!workspace}
+        autoCompile={autoCompile}
         onCompile={() => compile(latexSource, assets, compiler)}
         onFilesSelected={handleFilesSelected}
         onCompilerChange={setCompiler}
+        onAutoCompileChange={setAutoCompile}
         onOpenFolder={handleOpenFolder}
         onSaveFile={handleSaveFile}
         onSaveFolder={handleSaveFolder}
