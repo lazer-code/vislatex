@@ -46,6 +46,23 @@ body {
 .monaco-editor .view-lines .view-line.monaco-rtl-line {
   direction: rtl;
   text-align: right;
+  /* Issue #5: prevent right-aligned text from visually overlapping the resize
+     handle strip at the right edge of the editor pane. */
+  padding-right: 6px;
+}
+
+/* Issue #4 & #6: propagate RTL direction into the content span so that the
+   browser Unicode Bidirectional Algorithm orders mixed Hebrew + math correctly.
+   `unicode-bidi: embed` creates an additional embedding level using the
+   inherited RTL direction, which keeps Hebrew on the right and LTR math runs
+   (e.g. $…$) embedded to its left as expected.
+   `display: inline-block` with `min-width: 100%` lets the block fill the
+   view-line width so the RTL paragraph is anchored to the right edge. */
+.monaco-editor .view-lines .view-line.monaco-rtl-line > span {
+  display: inline-block;
+  min-width: 100%;
+  direction: rtl;
+  unicode-bidi: embed;
 }
 
 .monaco-editor .view-lines .view-line.monaco-ltr-line {
