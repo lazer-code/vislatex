@@ -1,15 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import TopBar from './TopBar'
-import type { GoogleUser } from './TopBar'
 import Editor from './Editor'
 import PDFViewer from './PDFViewer'
 import LogPanel from './LogPanel'
 import DropZone from './DropZone'
 import AssetPanel from './AssetPanel'
 import FileExplorer from './FileExplorer'
-import GoogleDrivePanel from './GoogleDrivePanel'
-import type { DriveFile } from './GoogleDrivePanel'
-import GoogleSignInModal from './GoogleSignInModal'
 import MiKTeXWarningModal from './MiKTeXWarningModal'
 import { WorkspaceState, WorkspaceFile, isTextFile } from '../types/workspace'
 
@@ -18,13 +14,31 @@ interface FSFileHandle {
   kind: 'file'
   getFile(): Promise<File>
 }
+interface FSWritableStream {
+  write(data: string | ArrayBuffer | Blob): Promise<void>
+  close(): Promise<void>
+}
+interface FSFileHandleWritable {
+  kind: 'file'
+  getFile(): Promise<File>
+  createWritable(opts?: { keepExistingData?: boolean }): Promise<FSWritableStream>
+}
 interface FSDirHandle {
   kind: 'directory'
   name: string
   entries(): AsyncIterableIterator<[string, FSFileHandle | FSDirHandle]>
 }
+interface FSDirHandleWritable extends FSDirHandle {
+  getFileHandle(name: string, opts?: { create?: boolean }): Promise<FSFileHandleWritable>
+  getDirectoryHandle(name: string, opts?: { create?: boolean }): Promise<FSDirHandleWritable>
+  requestPermission(opts: { mode: 'read' | 'readwrite' }): Promise<'granted' | 'denied' | 'prompt'>
+}
 interface WindowWithFSA {
-  showDirectoryPicker(): Promise<FSDirHandle>
+  showDirectoryPicker(): Promise<FSDirHandleWritable>
+  showSaveFilePicker(opts?: {
+    suggestedName?: string
+    types?: Array<{ description: string; accept: Record<string, string[]> }>
+  }): Promise<FSFileHandleWritable>
 }
 
 const DEFAULT_LATEX = `\\documentclass{article}
@@ -65,49 +79,6 @@ And the quadratic formula:
 
 const LS_SOURCE_KEY = 'vislatex_source'
 const LS_COMPILER_KEY = 'vislatex_compiler'
-const LS_GOOGLE_CLIENT_ID = 'vislatex_google_client_id'
-
-// ── Google OAuth helpers ─────────────────────────────────────────────────────
-const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/drive'
-
-interface TokenClient {
-  requestAccessToken(overrides?: { prompt?: string }): void
-}
-
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        oauth2: {
-          initTokenClient(config: {
-            client_id: string
-            scope: string
-            callback: (resp: { access_token?: string; error?: string }) => void
-          }): TokenClient
-        }
-        id: {
-          initialize(config: {
-            client_id: string
-            callback: (resp: { credential: string }) => void
-          }): void
-          prompt(): void
-          revoke(hint: string, done: () => void): void
-        }
-      }
-    }
-  }
-}
-
-function parseJwt(token: string): Record<string, string> {
-  try {
-    return JSON.parse(atob(token.split('.')[1]))
-  } catch {
-    return {}
-  }
-}
-
-const getGoogleClientId = () =>
-  typeof window !== 'undefined' ? localStorage.getItem(LS_GOOGLE_CLIENT_ID) ?? '' : ''
 
 function parseCompileLog(log: string): Array<{ line: number; message: string; severity: 'error' | 'warning' }> {
   const diags: Array<{ line: number; message: string; severity: 'error' | 'warning' }> = []
@@ -170,16 +141,11 @@ export default function VisLatexApp() {
   const [editorPct, setEditorPct] = useState(50)
   const mainAreaRef = useRef<HTMLDivElement>(null)
 
-  // ── Google auth & Drive state ────────────────────────────────────────────
-  const [googleUser, setGoogleUser] = useState<GoogleUser | null>(null)
-  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null)
-  const [driveFileId, setDriveFileId] = useState<string | null>(null)
-  const [driveAutoSaveStatus, setDriveAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
-  const [showDrivePanel, setShowDrivePanel] = useState(false)
-  const [showGoogleSetupModal, setShowGoogleSetupModal] = useState(false)
   const [showMiKTeXWarning, setShowMiKTeXWarning] = useState(false)
-  const tokenClientRef = useRef<TokenClient | null>(null)
-  const driveAutoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── Directory handle for save-back ───────────────────────────────────────
+  const dirHandleRef = useRef<FSDirHandleWritable | null>(null)
+
   const compile = useCallback(
     async (
       source: string,
@@ -328,127 +294,6 @@ export default function VisLatexApp() {
     })
   }, [])
 
-  // ── Google auth logic ─────────────────────────────────────────────────────
-
-  /** Initialise the Google Identity Services token client once the script loads. */
-  const initTokenClient = useCallback((clientId?: string) => {
-    const cid = clientId ?? getGoogleClientId()
-    if (!cid || !window.google) return
-    tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
-      client_id: cid,
-      scope: GOOGLE_SCOPES,
-      callback: (resp) => {
-        if (resp.error || !resp.access_token) return
-        setGoogleAccessToken(resp.access_token)
-      },
-    })
-  }, [])
-
-  // Wait for the GSI script to load, then initialise the token client.
-  useEffect(() => {
-    if (window.google) {
-      const cid = getGoogleClientId()
-      if (cid) initTokenClient(cid)
-      return
-    }
-    const script = document.getElementById('google-gsi-script')
-    if (script) {
-      const handler = () => {
-        const cid = getGoogleClientId()
-        if (cid) initTokenClient(cid)
-      }
-      script.addEventListener('load', handler)
-      return () => script.removeEventListener('load', handler)
-    }
-  }, [initTokenClient])
-
-  const proceedWithGoogleSignIn = useCallback((clientId: string) => {
-    if (!tokenClientRef.current) {
-      initTokenClient(clientId)
-    }
-    // Use Google Identity Services one-tap for profile info
-    if (window.google?.accounts.id) {
-      window.google.accounts.id.initialize({
-        client_id: clientId,
-        callback: (resp) => {
-          const payload = parseJwt(resp.credential)
-          setGoogleUser({
-            name: payload.name ?? 'Google User',
-            email: payload.email ?? '',
-            picture: payload.picture ?? '',
-          })
-        },
-      })
-      window.google.accounts.id.prompt()
-    }
-    // Request OAuth2 access token for Drive API
-    tokenClientRef.current?.requestAccessToken({ prompt: 'consent' })
-  }, [initTokenClient])
-
-  const handleGoogleSignIn = useCallback(() => {
-    const clientId = getGoogleClientId()
-    if (!clientId) {
-      setShowGoogleSetupModal(true)
-      return
-    }
-    proceedWithGoogleSignIn(clientId)
-  }, [proceedWithGoogleSignIn])
-
-  const handleGoogleSetupConfirm = useCallback((clientId: string) => {
-    setShowGoogleSetupModal(false)
-    proceedWithGoogleSignIn(clientId)
-  }, [proceedWithGoogleSignIn])
-
-  const handleGoogleSignOut = useCallback(() => {
-    if (googleUser?.email && window.google?.accounts.id) {
-      window.google.accounts.id.revoke(googleUser.email, () => {})
-    }
-    setGoogleUser(null)
-    setGoogleAccessToken(null)
-    setDriveFileId(null)
-    setDriveAutoSaveStatus('idle')
-    setShowDrivePanel(false)
-  }, [googleUser])
-
-  /** Auto-save the current file to Google Drive. */
-  const driveAutoSave = useCallback(
-    async (content: string, fileId: string, token: string) => {
-      setDriveAutoSaveStatus('saving')
-      try {
-        const res = await fetch(
-          `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
-          {
-            method: 'PATCH',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'text/plain',
-            },
-            body: content,
-          }
-        )
-        if (!res.ok) throw new Error(`Drive save error: ${res.status}`)
-        setDriveAutoSaveStatus('saved')
-        // Reset to idle after 2 s so the indicator fades
-        setTimeout(() => setDriveAutoSaveStatus('idle'), 2000)
-      } catch {
-        setDriveAutoSaveStatus('error')
-      }
-    },
-    []
-  )
-
-  // Debounced auto-save to Drive (single-file mode, when a Drive file is open)
-  useEffect(() => {
-    if (!googleAccessToken || !driveFileId || workspace) return
-    if (driveAutoSaveTimerRef.current) clearTimeout(driveAutoSaveTimerRef.current)
-    driveAutoSaveTimerRef.current = setTimeout(() => {
-      driveAutoSave(latexSource, driveFileId, googleAccessToken)
-    }, 3000)
-    return () => {
-      if (driveAutoSaveTimerRef.current) clearTimeout(driveAutoSaveTimerRef.current)
-    }
-  }, [latexSource, googleAccessToken, driveFileId, workspace, driveAutoSave])
-
   // ── Workspace helpers ────────────────────────────────────────────────────
 
   /** Initialise workspace state from an array of WorkspaceFile entries. */
@@ -467,7 +312,7 @@ export default function VisLatexApp() {
 
   /** Load workspace from File System Access API directory handle. */
   const loadFromDirectoryHandle = useCallback(
-    async (dirHandle: FSDirHandle) => {
+    async (dirHandle: FSDirHandleWritable) => {
       const files: WorkspaceFile[] = []
 
       async function walk(handle: FSDirHandle, prefix: string) {
@@ -493,6 +338,7 @@ export default function VisLatexApp() {
       }
 
       await walk(dirHandle, '')
+      dirHandleRef.current = dirHandle
       initWorkspace(dirHandle.name, files)
     },
     [initWorkspace]
@@ -524,6 +370,8 @@ export default function VisLatexApp() {
         }
         files.push(wsFile)
       }
+      // webkitdirectory fallback has no write-back handle
+      dirHandleRef.current = null
       initWorkspace(rootFolderName, files)
     },
     [initWorkspace]
@@ -553,42 +401,105 @@ export default function VisLatexApp() {
     e.target.value = ''
   }
 
-  // ── Google Drive file / folder handlers ─────────────────────────────────
+  // ── Save file / folder handlers ──────────────────────────────────────────
 
-  /** User selected a single .tex file from Drive. */
-  const handleDriveFileSelect = useCallback(
-    (file: DriveFile, content: string) => {
-      setLatexSource(content)
-      setDriveFileId(file.id)
-      setWorkspace(null)
-      setActiveFilePath(null)
-      setMainTexPath(null)
-      setPdfUrl(null)
-      pdfUrlRef.current = null
-      setCompileLog('')
-      setCompileError(false)
-      setDriveAutoSaveStatus('idle')
-      setShowDrivePanel(false)
-    },
-    []
-  )
+  /** Save the currently active file (single-file or workspace mode). */
+  const handleSaveFile = useCallback(async () => {
+    // Determine what content to save and the default file name
+    let content: string
+    let defaultName: string
 
-  /** User opened an entire Drive folder as a workspace. */
-  const handleDriveFolderSelect = useCallback(
-    (driveFiles: DriveFile[], contents: Record<string, string>) => {
-      const wsFiles: WorkspaceFile[] = driveFiles.map((f) => ({
-        type: 'file' as const,
-        path: f.name,
-        name: f.name.includes('/') ? f.name.split('/').pop()! : f.name,
-        content: contents[f.name] ?? undefined,
-      }))
-      const folderName = driveFiles[0]?.name.split('/')[0] ?? 'Drive Project'
-      initWorkspace(folderName, wsFiles)
-      setDriveFileId(null)
-      setShowDrivePanel(false)
-    },
-    [initWorkspace]
-  )
+    if (workspace && activeFilePath) {
+      const file = workspace.files.find((f) => f.path === activeFilePath)
+      if (!file) return
+      content = file.content ?? ''
+      defaultName = file.name
+    } else {
+      content = latexSource
+      defaultName = 'main.tex'
+    }
+
+    if ('showSaveFilePicker' in window) {
+      try {
+        const fsa = window as unknown as WindowWithFSA
+        const fileHandle = await fsa.showSaveFilePicker({
+          suggestedName: defaultName,
+          types: [
+            { description: 'LaTeX files', accept: { 'text/x-tex': ['.tex'] } },
+            { description: 'All files', accept: { '*/*': [] } },
+          ],
+        })
+        const writable = await fileHandle.createWritable()
+        await writable.write(content)
+        await writable.close()
+        return
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return
+        // Fall through to download fallback
+      }
+    }
+
+    // Fallback: trigger a browser download
+    const blob = new Blob([content], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = defaultName
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [workspace, activeFilePath, latexSource])
+
+  /** Save all workspace files to disk (write-back to the opened directory or pick a new one). */
+  const handleSaveFolder = useCallback(async () => {
+    if (!workspace) return
+
+    const fsa = window as unknown as WindowWithFSA
+
+    // Try to reuse the directory handle we opened from, requesting write access
+    let rootHandle = dirHandleRef.current
+    if (rootHandle) {
+      try {
+        const perm = await rootHandle.requestPermission({ mode: 'readwrite' })
+        if (perm !== 'granted') rootHandle = null
+      } catch {
+        rootHandle = null
+      }
+    }
+
+    // No usable handle — ask the user to pick a destination folder
+    if (!rootHandle) {
+      if (!('showDirectoryPicker' in window)) {
+        alert('Your browser does not support folder save. Please use "Save" or update your browser.')
+        return
+      }
+      try {
+        rootHandle = await fsa.showDirectoryPicker()
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return
+        console.error('[vislatex] showDirectoryPicker failed:', err)
+        return
+      }
+    }
+
+    // Write every workspace text file to the destination directory
+    for (const file of workspace.files) {
+      if (!file.content) continue
+      try {
+        const parts = file.path.split('/')
+        let dir: FSDirHandleWritable = rootHandle
+        for (const part of parts.slice(0, -1)) {
+          dir = await dir.getDirectoryHandle(part, { create: true })
+        }
+        const fileName = parts[parts.length - 1]
+        const fileHandle = await dir.getFileHandle(fileName, { create: true })
+        const writable = await fileHandle.createWritable()
+        await writable.write(file.content)
+        await writable.close()
+      } catch (err) {
+        console.error(`[vislatex] Failed to save ${file.path}:`, err)
+      }
+    }
+  }, [workspace])
 
   // ── Editor value ──────────────────────────────────────────────────────────
   const editorValue =
@@ -858,15 +769,13 @@ export default function VisLatexApp() {
         isCompiling={isCompiling}
         compileError={compileError}
         compiler={compiler}
-        googleUser={googleUser}
-        driveAutoSaveStatus={driveAutoSaveStatus}
+        hasWorkspace={!!workspace}
         onCompile={() => compile(latexSource, assets, compiler)}
         onFilesSelected={handleFilesSelected}
         onCompilerChange={setCompiler}
         onOpenFolder={handleOpenFolder}
-        onGoogleSignIn={handleGoogleSignIn}
-        onGoogleSignOut={handleGoogleSignOut}
-        onOpenDrive={() => setShowDrivePanel(true)}
+        onSaveFile={handleSaveFile}
+        onSaveFolder={handleSaveFolder}
       />
 
       {/* Hidden folder input for webkitdirectory fallback */}
@@ -908,6 +817,7 @@ export default function VisLatexApp() {
               className="w-1 shrink-0 bg-zinc-700 hover:bg-cyan-500 cursor-col-resize flex flex-col items-center justify-center gap-0.5 transition-colors"
               onMouseDown={(e) => {
                 e.preventDefault()
+                document.body.style.userSelect = 'none'
                 const startX = e.clientX
                 const startW = sidebarWidth
                 const onMove = (mv: MouseEvent) => {
@@ -915,6 +825,7 @@ export default function VisLatexApp() {
                   setSidebarWidth(next)
                 }
                 const onUp = () => {
+                  document.body.style.userSelect = ''
                   window.removeEventListener('mousemove', onMove)
                   window.removeEventListener('mouseup', onUp)
                 }
@@ -938,6 +849,7 @@ export default function VisLatexApp() {
             className="w-1 shrink-0 bg-zinc-700 hover:bg-cyan-500 cursor-col-resize flex flex-col items-center justify-center gap-0.5 transition-colors"
             onMouseDown={(e) => {
               e.preventDefault()
+              document.body.style.userSelect = 'none'
               const container = mainAreaRef.current
               if (!container) return
               const rect = container.getBoundingClientRect()
@@ -948,6 +860,7 @@ export default function VisLatexApp() {
                 setEditorPct(pct)
               }
               const onUp = () => {
+                document.body.style.userSelect = ''
                 window.removeEventListener('mousemove', onMove)
                 window.removeEventListener('mouseup', onUp)
               }
@@ -978,24 +891,6 @@ export default function VisLatexApp() {
       />
 
       <DropZone isDragging={isDragging} onDrop={handleDropZoneDrop} />
-
-      {/* Google Drive file browser */}
-      {showDrivePanel && googleAccessToken && (
-        <GoogleDrivePanel
-          accessToken={googleAccessToken}
-          onSelectFile={handleDriveFileSelect}
-          onSelectFolder={handleDriveFolderSelect}
-          onClose={() => setShowDrivePanel(false)}
-        />
-      )}
-
-      {/* Google Sign-In setup modal */}
-      {showGoogleSetupModal && (
-        <GoogleSignInModal
-          onConfirm={handleGoogleSetupConfirm}
-          onCancel={() => setShowGoogleSetupModal(false)}
-        />
-      )}
 
       {/* MiKTeX / LaTeX not found warning */}
       {showMiKTeXWarning && (
