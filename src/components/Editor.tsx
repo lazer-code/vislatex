@@ -127,11 +127,9 @@ export default function Editor({ value, onChange, diagnostics }: EditorProps) {
           const lineNumber = logicalLineForTop(top)
           if (lineNumber === undefined) return
           if (rtlLines.has(lineNumber)) {
-            el.classList.add('monaco-rtl-line')
-            el.classList.remove('monaco-ltr-line')
+            el.setAttribute('data-direction', 'rtl')
           } else {
-            el.classList.remove('monaco-rtl-line')
-            el.classList.add('monaco-ltr-line')
+            el.setAttribute('data-direction', 'ltr')
           }
         })
       }
