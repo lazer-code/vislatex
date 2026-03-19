@@ -38,20 +38,24 @@ body {
 }
 
 /*
- * Per-line direction classes applied by Editor.tsx to Monaco view-line elements.
+ * Per-line direction styles applied by Editor.tsx to Monaco view-line elements
+ * via data-direction attributes.  We use data attributes instead of extra CSS
+ * classes because Monaco's internal hit-testing (click → caret position) checks
+ * className === 'view-line' exactly; adding extra classes would break click/caret
+ * placement on all non-empty lines.
+ *
  * We only use text-align to visually right-anchor RTL lines.  We intentionally
  * do NOT change the `direction` property on view-line elements because Monaco's
- * internal hit-testing (click → caret position) uses its own glyph metrics in
- * LTR coordinate space; overriding `direction` on the element causes the visual
- * text position to diverge from Monaco's calculated position, which breaks
- * click/caret placement on all non-empty lines.
+ * internal hit-testing uses its own glyph metrics in LTR coordinate space;
+ * overriding `direction` on the element causes the visual text position to
+ * diverge from Monaco's calculated position, which also breaks click/caret placement.
  */
-.monaco-editor .view-lines .view-line.monaco-rtl-line {
+.monaco-editor .view-lines .view-line[data-direction="rtl"] {
   text-align: right;
   /* Prevent right-aligned text from visually overlapping the resize handle. */
   padding-right: 6px;
 }
 
-.monaco-editor .view-lines .view-line.monaco-ltr-line {
+.monaco-editor .view-lines .view-line[data-direction="ltr"] {
   text-align: left;
 }
