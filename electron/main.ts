@@ -241,10 +241,14 @@ ipcMain.handle('compile', async (_event, payload: CompileRequest) => {
       const mainTexBasename = path.basename(payload.mainPath)
       const baseNameNoExt = path.basename(payload.mainPath, path.extname(payload.mainPath))
 
+      // Use forward slashes for the output-directory argument: some versions of
+      // kpathsea/TeX on Windows do not handle backslash paths in this option.
+      const outputDirArg = tmpDir.split(path.sep).join('/')
+
       const args = [
         '-interaction=nonstopmode',
         '-no-shell-escape',
-        `-output-directory=${tmpDir}`,
+        `-output-directory=${outputDirArg}`,
         mainTexBasename,
       ]
 
@@ -285,13 +289,31 @@ ipcMain.handle('compile', async (_event, payload: CompileRequest) => {
       }
 
       let pdfBase64: string | null = null
-      try {
-        const pdfBytes = await readFile(join(tmpDir, baseNameNoExt + '.pdf'))
-        pdfBase64 = pdfBytes.toString('base64')
-        success = true
-      } catch {
-        success = false
+      // PDF candidate locations: the specified output-directory first, then the
+      // directory that contains the main .tex file as a fallback (some TeX
+      // engines ignore -output-directory and write to the working directory).
+      const pdfCandidates = [
+        join(tmpDir, baseNameNoExt + '.pdf'),
+        join(mainTexDir, baseNameNoExt + '.pdf'),
+      ]
+      for (const pdfPath of pdfCandidates) {
+        // Retry up to 3 times with a short delay to handle transient file locks
+        // (e.g. Windows Defender scanning the newly-created PDF).
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const pdfBytes = await readFile(pdfPath)
+            pdfBase64 = pdfBytes.toString('base64')
+            success = true
+            break
+          } catch {
+            if (attempt < 2) {
+              await new Promise<void>((resolve) => setTimeout(resolve, 200))
+            }
+          }
+        }
+        if (pdfBase64 !== null) break
       }
+      if (pdfBase64 === null) success = false
 
       return { success, pdf: pdfBase64, log }
     }
@@ -313,10 +335,14 @@ ipcMain.handle('compile', async (_event, payload: CompileRequest) => {
       }
     }
 
+    // Use forward slashes for the output-directory argument: some versions of
+    // kpathsea/TeX on Windows do not handle backslash paths in this option.
+    const singleOutputDirArg = tmpDir.split(path.sep).join('/')
+
     const args = [
       '-interaction=nonstopmode',
       '-no-shell-escape',
-      `-output-directory=${tmpDir}`,
+      `-output-directory=${singleOutputDirArg}`,
       'main.tex',
     ]
     let log = ''
@@ -356,13 +382,21 @@ ipcMain.handle('compile', async (_event, payload: CompileRequest) => {
     }
 
     let pdfBase64: string | null = null
-    try {
-      const pdfBytes = await readFile(join(tmpDir, 'main.pdf'))
-      pdfBase64 = pdfBytes.toString('base64')
-      success = true
-    } catch {
-      success = false
+    // Retry up to 3 times with a short delay to handle transient file locks
+    // (e.g. Windows Defender scanning the newly-created PDF).
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const pdfBytes = await readFile(join(tmpDir, 'main.pdf'))
+        pdfBase64 = pdfBytes.toString('base64')
+        success = true
+        break
+      } catch {
+        if (attempt < 2) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 200))
+        }
+      }
     }
+    if (pdfBase64 === null) success = false
 
     return { success, pdf: pdfBase64, log }
   } catch (err: unknown) {
