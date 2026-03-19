@@ -38,34 +38,38 @@ body {
 }
 
 /*
- * Per-line direction classes applied by Editor.tsx to Monaco view-line elements.
+ * Per-line RTL direction applied by Editor.tsx to Monaco view-line elements.
+ *
+ * IMPORTANT: we use a data-direction attribute instead of adding CSS classes.
+ * Monaco's hit-testing checks element.className === 'view-line' as an EXACT
+ * string comparison.  Adding any extra class to that element causes the check
+ * to fail, which makes Monaco return UnknownHitTestResult for every click on
+ * those lines – preventing cursor placement and making them appear uneditable.
+ * Using a data-* attribute leaves className untouched while still allowing CSS
+ * selectors to target the element.
+ *
  * Monaco positions view-line divs absolutely; setting direction + text-align on
  * the div causes the inline content span (containing token spans) to be rendered
  * starting from the appropriate edge.
  */
-.monaco-editor .view-lines .view-line.monaco-rtl-line {
+.monaco-editor .view-lines .view-line[data-direction="rtl"] {
   direction: rtl;
   text-align: right;
-  /* Issue #5: prevent right-aligned text from visually overlapping the resize
-     handle strip at the right edge of the editor pane. */
+  /* Prevent right-aligned text from visually overlapping the resize handle
+     strip at the right edge of the editor pane. */
   padding-right: 6px;
 }
 
-/* Issue #4 & #6: propagate RTL direction into the content span so that the
-   browser Unicode Bidirectional Algorithm orders mixed Hebrew + math correctly.
+/* Propagate RTL direction into the content span so that the browser Unicode
+   Bidirectional Algorithm orders mixed Hebrew + math correctly.
    `unicode-bidi: embed` creates an additional embedding level using the
    inherited RTL direction, which keeps Hebrew on the right and LTR math runs
    (e.g. $…$) embedded to its left as expected.
    `display: inline-block` with `min-width: 100%` lets the block fill the
    view-line width so the RTL paragraph is anchored to the right edge. */
-.monaco-editor .view-lines .view-line.monaco-rtl-line > span {
+.monaco-editor .view-lines .view-line[data-direction="rtl"] > span {
   display: inline-block;
   min-width: 100%;
   direction: rtl;
   unicode-bidi: embed;
-}
-
-.monaco-editor .view-lines .view-line.monaco-ltr-line {
-  direction: ltr;
-  text-align: left;
 }

@@ -115,8 +115,13 @@ export default function Editor({ value, onChange, diagnostics }: EditorProps) {
 
       /**
        * Walks every rendered .view-line DOM element and applies the appropriate
-       * direction class based on the rtlLines set.  Called after any event that
-       * may have caused Monaco to create or recycle view-line elements.
+       * data-direction attribute based on the rtlLines set.  Called after any
+       * event that may have caused Monaco to create or recycle view-line elements.
+       *
+       * We intentionally use a data-* attribute instead of adding CSS classes so
+       * that element.className stays exactly "view-line".  Monaco's hit-testing
+       * checks className === 'view-line' as an exact string comparison; adding
+       * any extra class causes that check to fail, making those lines uneditable.
        */
       function applyLineDirections() {
         const dom = editor.getDomNode()
@@ -125,13 +130,17 @@ export default function Editor({ value, onChange, diagnostics }: EditorProps) {
         elements.forEach((el) => {
           const top = parseInt(el.style.top || '0', 10)
           const lineNumber = logicalLineForTop(top)
-          if (lineNumber === undefined) return
+          if (lineNumber === undefined) {
+            // Unknown position (e.g. element being recycled) – remove any
+            // stale direction attribute so it doesn't affect the next line
+            // rendered into this element.
+            el.removeAttribute('data-direction')
+            return
+          }
           if (rtlLines.has(lineNumber)) {
-            el.classList.add('monaco-rtl-line')
-            el.classList.remove('monaco-ltr-line')
+            el.setAttribute('data-direction', 'rtl')
           } else {
-            el.classList.remove('monaco-rtl-line')
-            el.classList.add('monaco-ltr-line')
+            el.removeAttribute('data-direction')
           }
         })
       }
