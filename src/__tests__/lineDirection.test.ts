@@ -2,6 +2,7 @@ import {
   getFirstMeaningfulChar,
   getLineDirection,
   getAlignmentForDirection,
+  getBraceBlocksOutsideMath,
 } from '@/utils/lineDirection'
 
 describe('getFirstMeaningfulChar', () => {
@@ -116,3 +117,90 @@ describe('getAlignmentForDirection', () => {
     expect(getAlignmentForDirection('ltr')).toBe('left')
   })
 })
+
+describe('getBraceBlocksOutsideMath', () => {
+  it('returns empty array for a plain English line', () => {
+    expect(getBraceBlocksOutsideMath('hello world')).toEqual([])
+  })
+
+  it('returns empty array for a line with no braces', () => {
+    expect(getBraceBlocksOutsideMath('מאחר ויש')).toEqual([])
+  })
+
+  it('detects a single Hebrew brace block', () => {
+    // \textbf{שלום} — the {} encloses Hebrew
+    const text = '\\textbf{שלום}'
+    const blocks = getBraceBlocksOutsideMath(text)
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].braceOpen).toBe(text.indexOf('{'))
+    expect(blocks[0].braceClose).toBe(text.lastIndexOf('}'))
+  })
+
+  it('returns empty for a brace block containing only English', () => {
+    expect(getBraceBlocksOutsideMath('\\textbf{hello}')).toEqual([])
+  })
+
+  it('does NOT detect braces inside math ($...$)', () => {
+    // The {} is inside inline math — should be ignored
+    expect(getBraceBlocksOutsideMath('$\\frac{שלום}{x}$')).toEqual([])
+  })
+
+  it('does NOT detect braces inside display math ($$...$$)', () => {
+    expect(getBraceBlocksOutsideMath('$$\\frac{שלום}{x}$$')).toEqual([])
+  })
+
+  it('detects a Hebrew block outside math even if math follows', () => {
+    // {שלום} is outside math; {x} is inside math
+    const text = '{שלום} and $\\frac{a}{b}$'
+    const blocks = getBraceBlocksOutsideMath(text)
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].braceOpen).toBe(0)
+    expect(blocks[0].braceClose).toBe(text.indexOf('}'))
+  })
+
+  it('detects multiple Hebrew brace blocks on one line', () => {
+    const text = '\\cmd{שלום} foo \\cmd{עולם}'
+    const blocks = getBraceBlocksOutsideMath(text)
+    expect(blocks).toHaveLength(2)
+  })
+
+  it('does not recurse into an already-detected RTL outer block', () => {
+    // Outer block starts with Hebrew — inner block should not be reported separately
+    const text = '{שלום {world}}'
+    const blocks = getBraceBlocksOutsideMath(text)
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].braceOpen).toBe(0)
+  })
+
+  it('finds RTL blocks nested inside non-RTL outer blocks', () => {
+    // Outer block starts with English (LTR), inner block starts with Hebrew
+    const text = '{hello {שלום}}'
+    const blocks = getBraceBlocksOutsideMath(text)
+    expect(blocks).toHaveLength(1)
+    expect(text[blocks[0].braceOpen]).toBe('{')
+    expect(text[blocks[0].braceClose]).toBe('}')
+    // The reported block is the inner one
+    const innerOpen = text.indexOf('{', 1)
+    expect(blocks[0].braceOpen).toBe(innerOpen)
+  })
+
+  it('handles an unmatched opening brace gracefully', () => {
+    expect(() => getBraceBlocksOutsideMath('{שלום')).not.toThrow()
+  })
+
+  it('returns empty for an empty string', () => {
+    expect(getBraceBlocksOutsideMath('')).toEqual([])
+  })
+
+  it('returns empty for LaTeX commands without Hebrew in braces', () => {
+    expect(getBraceBlocksOutsideMath('\\documentclass{article}')).toEqual([])
+  })
+
+  it('handles mixed Hebrew + English block correctly (starts with Hebrew)', () => {
+    const text = '{שלום world}'
+    const blocks = getBraceBlocksOutsideMath(text)
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].braceOpen).toBe(0)
+  })
+})
+
