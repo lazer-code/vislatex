@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle, type ForwardedRef } from 'react'
 import { getLineDirection, getBraceBlocksOutsideMath } from '@/utils/lineDirection'
 
 interface EditorProps {
@@ -16,9 +16,9 @@ export interface EditorHandle {
   jumpToLine(line: number): void
 }
 
-const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
-  { value, onChange, diagnostics },
-  ref
+const Editor = forwardRef(function Editor(
+  { value, onChange, diagnostics }: EditorProps,
+  ref: ForwardedRef<EditorHandle>
 ) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<import('monaco-editor').editor.IStandaloneCodeEditor | null>(null)
