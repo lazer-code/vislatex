@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import { getLineDirection, getBraceBlocksOutsideMath } from '@/utils/lineDirection'
 
 interface EditorProps {
@@ -7,7 +7,19 @@ interface EditorProps {
   diagnostics?: Array<{ line: number; message: string; severity: 'error' | 'warning' }>
 }
 
-export default function Editor({ value, onChange, diagnostics }: EditorProps) {
+/** Methods exposed via the Editor's forwarded ref. */
+export interface EditorHandle {
+  /**
+   * Scrolls the editor to the given 1-based line number and highlights it
+   * briefly so the user can see where the PDF click landed.
+   */
+  jumpToLine(line: number): void
+}
+
+const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
+  { value, onChange, diagnostics },
+  ref
+) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<import('monaco-editor').editor.IStandaloneCodeEditor | null>(null)
   const valueRef = useRef(value)
@@ -15,6 +27,33 @@ export default function Editor({ value, onChange, diagnostics }: EditorProps) {
   const [isLoaded, setIsLoaded] = useState(false)
   valueRef.current = value
   onChangeRef.current = onChange
+
+  // Expose jumpToLine to the parent via forwarded ref
+  useImperativeHandle(ref, () => ({
+    jumpToLine(line: number) {
+      const editor = editorRef.current
+      if (!editor) return
+      editor.revealLineInCenter(line)
+      editor.setPosition({ lineNumber: line, column: 1 })
+      // Flash the line with a decoration that auto-clears after 1.5 s
+      import('@monaco-editor/react').then(({ loader }) => {
+        loader.init().then((monacoInst) => {
+          const ids = editor.deltaDecorations([], [
+            {
+              range: new monacoInst.Range(line, 1, line, 1),
+              options: {
+                isWholeLine: true,
+                className: 'source-jump-highlight',
+              },
+            },
+          ])
+          setTimeout(() => {
+            editor.deltaDecorations(ids, [])
+          }, 1500)
+        })
+      })
+    },
+  }))
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -343,4 +382,6 @@ export default function Editor({ value, onChange, diagnostics }: EditorProps) {
       <div ref={containerRef} className="w-full h-full" />
     </div>
   )
-}
+})
+
+export default Editor
