@@ -1,5 +1,3 @@
-'use client'
-
 interface AssetPanelProps {
   assets: File[]
   onRemove: (name: string) => void

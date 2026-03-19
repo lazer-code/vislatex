@@ -1,5 +1,3 @@
-'use client'
-
 import { useState, useEffect, useRef, useCallback } from 'react'
 import TopBar from './TopBar'
 import type { GoogleUser } from './TopBar'
@@ -195,18 +193,23 @@ export default function VisLatexApp() {
         if (!mainContent.trim()) return
         setIsCompiling(true)
         try {
-          const formData = new FormData()
-          formData.append('compiler', selectedCompiler)
-          formData.append('mainPath', mtp)
-          for (const file of ws.files) {
-            const blob =
-              file.blob ?? new Blob([file.content ?? ''], { type: 'text/plain' })
-            formData.append('files', blob, file.name)
-            formData.append('paths', file.path)
-          }
-          const res = await fetch('/api/compile', { method: 'POST', body: formData })
-          const data: { success: boolean; pdf: string | null; log: string } =
-            await res.json()
+          const filesPayload = await Promise.all(
+            ws.files.map(async (file) => {
+              if (file.blob) {
+                const ab = await file.blob.arrayBuffer()
+                const bytes = new Uint8Array(ab)
+                let binary = ''
+                for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+                return { path: file.path, name: file.name, data: btoa(binary), isText: false }
+              }
+              return { path: file.path, name: file.name, data: file.content ?? '', isText: true }
+            })
+          )
+          const data = await window.electronAPI.compile({
+            compiler: selectedCompiler,
+            mainPath: mtp,
+            files: filesPayload,
+          })
           setCompileLog(data.log ?? '')
           setCompileError(!data.success)
           if (data.pdf) {
@@ -222,7 +225,7 @@ export default function VisLatexApp() {
             setLogOpen(true)
           }
         } catch (err) {
-          setCompileLog(err instanceof Error ? err.message : 'Network error')
+          setCompileLog(err instanceof Error ? err.message : 'Compilation error')
           setCompileError(true)
           setLogOpen(true)
         } finally {
@@ -235,15 +238,20 @@ export default function VisLatexApp() {
       if (!source.trim()) return
       setIsCompiling(true)
       try {
-        const formData = new FormData()
-        formData.append('mainTex', source)
-        formData.append('compiler', selectedCompiler)
-        for (const asset of assetFiles) {
-          formData.append('assets', asset)
-        }
-        const res = await fetch('/api/compile', { method: 'POST', body: formData })
-        const data: { success: boolean; pdf: string | null; log: string } =
-          await res.json()
+        const assetsPayload = await Promise.all(
+          assetFiles.map(async (asset) => {
+            const ab = await asset.arrayBuffer()
+            const bytes = new Uint8Array(ab)
+            let binary = ''
+            for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+            return { name: asset.name, data: btoa(binary) }
+          })
+        )
+        const data = await window.electronAPI.compile({
+          mainTex: source,
+          compiler: selectedCompiler,
+          assets: assetsPayload,
+        })
         setCompileLog(data.log ?? '')
         setCompileError(!data.success)
         if (data.pdf) {
@@ -259,7 +267,7 @@ export default function VisLatexApp() {
           setLogOpen(true)
         }
       } catch (err) {
-        setCompileLog(err instanceof Error ? err.message : 'Network error')
+        setCompileLog(err instanceof Error ? err.message : 'Compilation error')
         setCompileError(true)
         setLogOpen(true)
       } finally {

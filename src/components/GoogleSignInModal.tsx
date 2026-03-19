@@ -1,5 +1,3 @@
-'use client'
-
 import { useState } from 'react'
 
 const LS_CLIENT_ID_KEY = 'vislatex_google_client_id'

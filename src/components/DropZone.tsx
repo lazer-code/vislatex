@@ -1,5 +1,3 @@
-'use client'
-
 interface DropZoneProps {
   isDragging: boolean
   onDrop: (files: FileList) => void

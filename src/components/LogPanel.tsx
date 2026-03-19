@@ -1,5 +1,3 @@
-'use client'
-
 interface LogPanelProps {
   log: string
   isOpen: boolean
