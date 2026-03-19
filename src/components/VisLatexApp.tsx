@@ -8,6 +8,7 @@ import AssetPanel from './AssetPanel'
 import FileExplorer from './FileExplorer'
 import MiKTeXWarningModal from './MiKTeXWarningModal'
 import { WorkspaceState, WorkspaceFile, isTextFile } from '../types/workspace'
+import { computeEditorPct, computeSidebarWidth } from '../utils/splitterResize'
 
 // Minimal local types for the File System Access API (not yet in @types/lib)
 interface FSFileHandle {
@@ -834,8 +835,7 @@ export default function VisLatexApp() {
                 const startX = e.clientX
                 const startW = sidebarWidth
                 const onMove = (mv: MouseEvent) => {
-                  const next = Math.min(480, Math.max(120, startW + mv.clientX - startX))
-                  setSidebarWidth(next)
+                  setSidebarWidth(computeSidebarWidth(startW, startX, mv.clientX))
                 }
                 const onUp = () => {
                   document.body.style.userSelect = ''
@@ -866,11 +866,11 @@ export default function VisLatexApp() {
               const container = mainAreaRef.current
               if (!container) return
               const rect = container.getBoundingClientRect()
+              const startX = e.clientX
+              const startPct = editorPct
+              const totalW = rect.width - (workspace ? sidebarWidth + 4 : 0) - 4
               const onMove = (mv: MouseEvent) => {
-                const relX = mv.clientX - rect.left - (workspace ? sidebarWidth + 4 : 0)
-                const totalW = rect.width - (workspace ? sidebarWidth + 4 : 0) - 4
-                const pct = Math.min(80, Math.max(20, (relX / totalW) * 100))
-                setEditorPct(pct)
+                setEditorPct(computeEditorPct(startPct, startX, mv.clientX, totalW))
               }
               const onUp = () => {
                 document.body.style.userSelect = ''
