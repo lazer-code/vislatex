@@ -31,6 +31,8 @@ interface ElectronCompileResult {
 
 interface ElectronAPI {
   compile(payload: ElectronCompileRequest): Promise<ElectronCompileResult>
+  checkLatex(): Promise<boolean>
+  openExternal(url: string): void
 }
 
 declare global {

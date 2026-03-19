@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { writeFile, mkdir, readFile, rm } from 'fs/promises'
@@ -8,6 +8,46 @@ import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
 
 const execFileAsync = promisify(execFile)
+
+// ── MiKTeX / LaTeX presence check ────────────────────────────────────────────
+
+/**
+ * Returns true if any supported LaTeX compiler is found on the system PATH.
+ * Uses a short timeout so the check never blocks app startup.
+ */
+async function isLatexInstalled(): Promise<boolean> {
+  const candidates = ['pdflatex', 'xelatex', 'miktex']
+  for (const cmd of candidates) {
+    try {
+      await execFileAsync(cmd, ['--version'], { timeout: 5000 })
+      return true
+    } catch (err: unknown) {
+      const error = err as { code?: string; killed?: boolean }
+      if (error.killed) {
+        // Command timed out — it exists but is slow to respond; treat as present.
+        console.warn(`[vislatex] '${cmd} --version' timed out; assuming LaTeX is installed.`)
+        return true
+      }
+      // ENOENT means the executable was not found; any other exit code means it
+      // IS present (e.g. --version returned a non-zero code on some distros).
+      if (error.code !== 'ENOENT') return true
+    }
+  }
+  return false
+}
+
+ipcMain.handle('check-latex', async () => {
+  return isLatexInstalled()
+})
+
+ipcMain.on('open-external', (_event, url: string) => {
+  // Only allow https URLs to the MiKTeX website to be opened externally.
+  if (typeof url === 'string' && /^https:\/\/miktex\.org(\/|$)/.test(url)) {
+    shell.openExternal(url)
+  } else {
+    console.warn(`[vislatex] open-external: rejected URL '${url}'`)
+  }
+})
 
 /** Validate that a relative path stays within the project root (no traversal). */
 function isSafeRelativePath(p: string): boolean {
