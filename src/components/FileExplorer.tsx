@@ -1,5 +1,3 @@
-'use client'
-
 import { useState, useEffect, useRef } from 'react'
 import { WorkspaceFile, WorkspaceFolderNode, WorkspaceNode, buildTree } from '../types/workspace'
 

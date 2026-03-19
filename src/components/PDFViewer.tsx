@@ -1,5 +1,3 @@
-'use client'
-
 interface PDFViewerProps {
   pdfUrl: string | null
   isCompiling: boolean

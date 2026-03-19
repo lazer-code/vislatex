@@ -1,18 +1,19 @@
 {
   "name": "vislatex",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
+  "main": "out/main/index.js",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "dist": "npm run build && electron-builder",
+    "lint": "eslint src electron --ext .ts,.tsx",
     "test": "jest"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
     "monaco-editor": "^0.50.0",
-    "next": "^15.2.9",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "uuid": "^9.0.1"
@@ -23,14 +24,17 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/uuid": "^9.0.8",
+    "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.0.1",
+    "electron": "^41.0.3",
+    "electron-builder": "^26.8.1",
+    "electron-vite": "^5.0.0",
     "eslint": "^9.39.4",
-    "eslint-config-next": "^16.2.0",
     "jest": "^30.3.0",
-    "monaco-editor-webpack-plugin": "^7.1.1",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "ts-jest": "^29.4.6",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "^7.3.1"
   }
 }
