@@ -29,10 +29,35 @@ interface ElectronCompileResult {
   log: string
 }
 
+interface ElectronOpenDirectoryResult {
+  /** Absolute path to the opened directory on disk */
+  rootPath: string
+  /** Display name (folder base name) */
+  name: string
+  /** All files found under the directory */
+  files: ElectronFileEntry[]
+}
+
+interface ElectronDeletePathPayload {
+  /** Absolute path to the workspace root (used for path-traversal protection) */
+  rootPath: string
+  /** Path of the item to delete, relative to rootPath */
+  relativePath: string
+}
+
+interface ElectronDeletePathResult {
+  success: boolean
+  error?: string
+}
+
 interface ElectronAPI {
   compile(payload: ElectronCompileRequest): Promise<ElectronCompileResult>
   checkLatex(): Promise<boolean>
   openExternal(url: string): void
+  /** Opens a native folder picker and returns the selected directory + files. */
+  openDirectory(): Promise<ElectronOpenDirectoryResult | null>
+  /** Deletes a file or folder at relativePath inside rootPath on the real filesystem. */
+  deletePath(payload: ElectronDeletePathPayload): Promise<ElectronDeletePathResult>
 }
 
 declare global {

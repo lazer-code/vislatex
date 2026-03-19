@@ -11,7 +11,7 @@ interface FileExplorerProps {
   onNewFile: (parentPath: string | null, name: string) => void
   onNewFolder: (parentPath: string | null, name: string) => void
   onRename: (path: string, newName: string, type: 'file' | 'folder') => void
-  onDelete: (path: string, type: 'file' | 'folder') => void
+  onDelete: (path: string, type: 'file' | 'folder') => void | Promise<void>
   onSetMainTex: (path: string) => void
 }
 
@@ -86,7 +86,7 @@ interface TreeNodeProps {
   pendingCreate: PendingCreate | null
   onFileClick: (path: string) => void
   onRename: (path: string, newName: string, type: 'file' | 'folder') => void
-  onDelete: (path: string, type: 'file' | 'folder') => void
+  onDelete: (path: string, type: 'file' | 'folder') => void | Promise<void>
   onSetMainTex: (path: string) => void
   onNewFile: (folderPath: string) => void
   onNewFolder: (folderPath: string) => void

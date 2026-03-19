@@ -1,11 +1,12 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { writeFile, mkdir, readFile, rm } from 'fs/promises'
+import { writeFile, mkdir, readFile, rm, readdir } from 'fs/promises'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
+import { isSafeRelativePath, injectHebrewBidi } from './latexUtils'
 
 const execFileAsync = promisify(execFile)
 
@@ -49,12 +50,104 @@ ipcMain.on('open-external', (_event, url: string) => {
   }
 })
 
-/** Validate that a relative path stays within the project root (no traversal). */
-function isSafeRelativePath(p: string): boolean {
-  if (path.isAbsolute(p)) return false
-  const normalized = path.normalize(p)
-  return !normalized.startsWith('..')
+
+// ── File-system helpers ───────────────────────────────────────────────────────
+
+const TEXT_EXTENSIONS_MAIN = ['.tex', '.bib', '.sty', '.cls', '.txt', '.md']
+
+interface ScannedFile {
+  path: string
+  name: string
+  data: string
+  isText: boolean
 }
+
+async function scanDirectory(rootPath: string, relPrefix: string): Promise<ScannedFile[]> {
+  const files: ScannedFile[] = []
+  const targetDir = relPrefix ? join(rootPath, relPrefix) : rootPath
+  let entries
+  try {
+    entries = await readdir(targetDir, { withFileTypes: true })
+  } catch {
+    return files
+  }
+
+  for (const entry of entries) {
+    // Skip hidden files/folders (e.g. .git)
+    if (entry.name.startsWith('.')) continue
+    const relPath = relPrefix ? `${relPrefix}/${entry.name}` : entry.name
+    if (entry.isDirectory()) {
+      const sub = await scanDirectory(rootPath, relPath)
+      files.push(...sub)
+    } else if (entry.isFile()) {
+      const isText = TEXT_EXTENSIONS_MAIN.some((ext) => entry.name.toLowerCase().endsWith(ext))
+      try {
+        if (isText) {
+          const content = await readFile(join(rootPath, relPath), 'utf8')
+          files.push({ path: relPath, name: entry.name, data: content, isText: true })
+        } else {
+          const buf = await readFile(join(rootPath, relPath))
+          files.push({ path: relPath, name: entry.name, data: buf.toString('base64'), isText: false })
+        }
+      } catch {
+        // skip unreadable files
+      }
+    }
+  }
+  return files
+}
+
+// ── open-directory IPC ────────────────────────────────────────────────────────
+
+ipcMain.handle('open-directory', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  const result = await dialog.showOpenDialog(win!, {
+    properties: ['openDirectory'],
+  })
+  if (result.canceled || result.filePaths.length === 0) return null
+  const rootPath = result.filePaths[0]
+  const name = path.basename(rootPath)
+  const files = await scanDirectory(rootPath, '')
+  return { rootPath, name, files }
+})
+
+// ── delete-path IPC ───────────────────────────────────────────────────────────
+
+interface DeletePathPayload {
+  rootPath: string
+  relativePath: string
+}
+
+ipcMain.handle('delete-path', async (_event, payload: DeletePathPayload) => {
+  const { rootPath, relativePath } = payload
+
+  if (
+    typeof rootPath !== 'string' ||
+    typeof relativePath !== 'string' ||
+    !rootPath ||
+    !relativePath
+  ) {
+    return { success: false, error: 'Invalid path arguments' }
+  }
+
+  if (!isSafeRelativePath(relativePath)) {
+    return { success: false, error: 'Path traversal not allowed' }
+  }
+
+  const absolutePath = join(rootPath, relativePath)
+  const rel = path.relative(rootPath, absolutePath)
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    return { success: false, error: 'Path traversal not allowed' }
+  }
+
+  try {
+    await rm(absolutePath, { recursive: true, force: true })
+    return { success: true }
+  } catch (err: unknown) {
+    const error = err as { message?: string }
+    return { success: false, error: error.message ?? 'Deletion failed' }
+  }
+})
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -123,7 +216,12 @@ ipcMain.handle('compile', async (_event, payload: CompileRequest) => {
 
         await mkdir(path.dirname(destPath), { recursive: true })
         if (file.isText) {
-          await writeFile(destPath, file.data, 'utf8')
+          // For the main .tex file, inject Hebrew bidi preamble when needed
+          const content =
+            relPath === payload.mainPath && compiler === 'xelatex'
+              ? injectHebrewBidi(file.data)
+              : file.data
+          await writeFile(destPath, content, 'utf8')
         } else {
           await writeFile(destPath, Buffer.from(file.data, 'base64'))
         }
@@ -191,7 +289,11 @@ ipcMain.handle('compile', async (_event, payload: CompileRequest) => {
       return { success: false, log: 'No LaTeX source provided', pdf: null }
     }
 
-    await writeFile(join(tmpDir, 'main.tex'), payload.mainTex, 'utf8')
+    await writeFile(
+      join(tmpDir, 'main.tex'),
+      compiler === 'xelatex' ? injectHebrewBidi(payload.mainTex) : payload.mainTex,
+      'utf8'
+    )
 
     if (payload.assets) {
       for (const asset of payload.assets) {

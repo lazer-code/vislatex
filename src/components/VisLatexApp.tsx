@@ -138,6 +138,19 @@ export default function VisLatexApp() {
   workspaceRef.current = workspace
   mainTexPathRef.current = mainTexPath
 
+  /**
+   * Tracks the most recently focused .tex file so that compile() always
+   * targets the last document the user was actively editing.
+   */
+  const lastTexPathRef = useRef<string | null>(null)
+
+  /**
+   * Absolute filesystem path of the opened workspace root (set when the
+   * folder was opened via Electron's native dialog).  Used for real-FS
+   * deletion.
+   */
+  const workspaceRootRef = useRef<string | null>(null)
+
   const pdfUrlRef = useRef<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
@@ -159,11 +172,26 @@ export default function VisLatexApp() {
       selectedCompiler: 'pdflatex' | 'xelatex'
     ) => {
       const ws = workspaceRef.current
-      const mtp = mainTexPathRef.current
 
-      if (ws && mtp) {
+      if (ws) {
         // ── Project-aware compile ──────────────────────────────────────
-        const mainContent = ws.files.find((f) => f.path === mtp)?.content ?? ''
+        // Compile target: last focused .tex > mainTexPath > first .tex in workspace
+        const compilePath =
+          lastTexPathRef.current ??
+          mainTexPathRef.current ??
+          ws.files.find((f) => f.path.endsWith('.tex'))?.path ??
+          null
+
+        if (!compilePath) {
+          setCompileLog(
+            'No .tex file found in the workspace. Please create or open a .tex file.'
+          )
+          setCompileError(true)
+          setLogOpen(true)
+          return
+        }
+
+        const mainContent = ws.files.find((f) => f.path === compilePath)?.content ?? ''
         if (!mainContent.trim()) return
         setIsCompiling(true)
         try {
@@ -181,7 +209,7 @@ export default function VisLatexApp() {
           )
           const data = await window.electronAPI.compile({
             compiler: selectedCompiler,
-            mainPath: mtp,
+            mainPath: compilePath,
             files: filesPayload,
           })
           setCompileLog(data.log ?? '')
@@ -316,6 +344,8 @@ export default function VisLatexApp() {
     setWorkspace({ name, files, extraFolders: [] })
     setMainTexPath(mainTex?.path ?? null)
     setActiveFilePath(mainTex?.path ?? null)
+    // Seed the last-focused .tex tracker with the initial main file
+    lastTexPathRef.current = mainTex?.path ?? null
     setPdfUrl(null)
     pdfUrlRef.current = null
     setCompileLog('')
@@ -382,8 +412,9 @@ export default function VisLatexApp() {
         }
         files.push(wsFile)
       }
-      // webkitdirectory fallback has no write-back handle
+      // webkitdirectory fallback has no write-back handle or root path
       dirHandleRef.current = null
+      workspaceRootRef.current = null
       initWorkspace(rootFolderName, files)
     },
     [initWorkspace]
@@ -391,9 +422,35 @@ export default function VisLatexApp() {
 
   /** Called by the "Open Folder" button. */
   const handleOpenFolder = useCallback(async () => {
+    // Prefer the Electron native dialog (gives us the absolute path for real-FS ops)
+    if (typeof window !== 'undefined' && window.electronAPI?.openDirectory) {
+      try {
+        const result = await window.electronAPI.openDirectory()
+        if (!result) return
+        workspaceRootRef.current = result.rootPath
+        dirHandleRef.current = null
+        const files: WorkspaceFile[] = result.files.map((f) => {
+          const wsFile: WorkspaceFile = { type: 'file', path: f.path, name: f.name }
+          if (f.isText) {
+            wsFile.content = f.data
+          } else {
+            const bytes = Uint8Array.from(atob(f.data), (c) => c.charCodeAt(0))
+            wsFile.blob = new Blob([bytes])
+          }
+          return wsFile
+        })
+        initWorkspace(result.name, files)
+        return
+      } catch (err) {
+        console.error('[vislatex] openDirectory failed:', err)
+        // Fall through to FSA / input fallback
+      }
+    }
+
     if (typeof window !== 'undefined' && 'showDirectoryPicker' in window) {
       try {
         const dirHandle = await (window as unknown as WindowWithFSA).showDirectoryPicker()
+        workspaceRootRef.current = null
         await loadFromDirectoryHandle(dirHandle)
         return
       } catch (err) {
@@ -402,7 +459,7 @@ export default function VisLatexApp() {
       }
     }
     folderInputRef.current?.click()
-  }, [loadFromDirectoryHandle])
+  }, [loadFromDirectoryHandle, initWorkspace])
 
   const handleFolderInputChange = async (
     e: React.ChangeEvent<HTMLInputElement>
@@ -540,6 +597,10 @@ export default function VisLatexApp() {
 
   const handleFileClick = (path: string) => {
     setActiveFilePath(path)
+    // Keep track of the most recently focused .tex file for compile targeting
+    if (path.endsWith('.tex')) {
+      lastTexPathRef.current = path
+    }
   }
 
   const handleNewFile = (parentPath: string | null, name: string) => {
@@ -616,10 +677,21 @@ export default function VisLatexApp() {
     }
   }
 
-  const handleDelete = (targetPath: string, type: 'file' | 'folder') => {
+  const handleDelete = async (targetPath: string, type: 'file' | 'folder') => {
     if (!workspace) return
     if (!confirm(`Delete ${type} "${targetPath}"?`)) return
 
+    // Attempt real filesystem deletion when we have the workspace root path
+    const rootPath = workspaceRootRef.current
+    if (rootPath && window.electronAPI?.deletePath) {
+      const result = await window.electronAPI.deletePath({ rootPath, relativePath: targetPath })
+      if (!result.success) {
+        alert(`Failed to delete "${targetPath}": ${result.error ?? 'Unknown error'}`)
+        return
+      }
+    }
+
+    // Update in-app state to reflect the deletion
     if (type === 'file') {
       setWorkspace((prev) =>
         prev
@@ -631,6 +703,7 @@ export default function VisLatexApp() {
         setActiveFilePath(remaining.length > 0 ? remaining[0].path : null)
       }
       if (mainTexPath === targetPath) setMainTexPath(null)
+      if (lastTexPathRef.current === targetPath) lastTexPathRef.current = null
     } else {
       const prefix = targetPath + '/'
       setWorkspace((prev) =>
@@ -658,12 +731,19 @@ export default function VisLatexApp() {
       ) {
         setMainTexPath(null)
       }
+      if (
+        lastTexPathRef.current &&
+        (lastTexPathRef.current === targetPath || lastTexPathRef.current.startsWith(prefix))
+      ) {
+        lastTexPathRef.current = null
+      }
     }
   }
 
   const handleSetMainTex = (path: string) => {
     setMainTexPath(path)
     setActiveFilePath(path)
+    lastTexPathRef.current = path
   }
 
   // ── Legacy file-upload handlers (single-file / drag-drop mode) ───────────

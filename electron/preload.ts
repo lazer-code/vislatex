@@ -21,6 +21,22 @@ interface CompileResult {
   log: string
 }
 
+interface OpenDirectoryResult {
+  rootPath: string
+  name: string
+  files: FileEntry[]
+}
+
+interface DeletePathPayload {
+  rootPath: string
+  relativePath: string
+}
+
+interface DeletePathResult {
+  success: boolean
+  error?: string
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   compile: (payload: CompileRequest): Promise<CompileResult> =>
     ipcRenderer.invoke('compile', payload),
@@ -28,4 +44,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('check-latex'),
   openExternal: (url: string): void =>
     ipcRenderer.send('open-external', url),
+  openDirectory: (): Promise<OpenDirectoryResult | null> =>
+    ipcRenderer.invoke('open-directory'),
+  deletePath: (payload: DeletePathPayload): Promise<DeletePathResult> =>
+    ipcRenderer.invoke('delete-path', payload),
 })
