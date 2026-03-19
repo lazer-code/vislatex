@@ -174,6 +174,14 @@ function createWindow(): void {
 
 // ── LaTeX compilation IPC handler ─────────────────────────────────────────────
 
+/** Shape of the error thrown by `execFileAsync` on non-zero exit. */
+interface ExecError {
+  code?: string
+  stdout?: string
+  stderr?: string
+  message?: string
+}
+
 interface FileEntry {
   path: string
   name: string
@@ -243,27 +251,31 @@ ipcMain.handle('compile', async (_event, payload: CompileRequest) => {
       let log = ''
       let success = false
 
-      try {
-        for (let i = 0; i < 2; i++) {
+      // Run each pass independently so a non-zero exit on the first pass
+      // (e.g. unresolved references, LaTeX warnings, or MiKTeX auto-installs)
+      // does not prevent the second pass from producing the PDF.
+      for (let i = 0; i < 2; i++) {
+        try {
           const result = await execFileAsync(compiler, args, {
             cwd: mainTexDir,
-            timeout: 30000,
+            timeout: 120000,
             maxBuffer: 10 * 1024 * 1024,
           })
           log = result.stdout + result.stderr
-        }
-        success = true
-      } catch (err: unknown) {
-        const error = err as { code?: string; stdout?: string; message?: string }
-        if (error.code === 'ENOENT') {
-          return {
-            success: false,
-            pdf: null,
-            log: `${compiler} not found. Please install MiKTeX or TeX Live and ensure it is on your PATH.`,
+        } catch (err: unknown) {
+          const error = err as ExecError
+          if (error.code === 'ENOENT') {
+            return {
+              success: false,
+              pdf: null,
+              log: `${compiler} not found. Please install MiKTeX or TeX Live and ensure it is on your PATH.`,
+            }
           }
+          // Non-zero exit: capture output and continue to the next pass.
+          // XeLaTeX/pdfLaTeX may exit with code 1 due to warnings yet still
+          // produce a usable PDF on this or the next pass.
+          log = ((error.stdout ?? '') + (error.stderr ?? '')) || error.message || ''
         }
-        log = error.stdout || error.message || 'Compilation failed'
-        success = false
       }
 
       try {
@@ -310,27 +322,31 @@ ipcMain.handle('compile', async (_event, payload: CompileRequest) => {
     let log = ''
     let success = false
 
-    try {
-      for (let i = 0; i < 2; i++) {
+    // Run each pass independently so a non-zero exit on the first pass
+    // (e.g. unresolved references, LaTeX warnings, or MiKTeX auto-installs)
+    // does not prevent the second pass from producing the PDF.
+    for (let i = 0; i < 2; i++) {
+      try {
         const result = await execFileAsync(compiler, args, {
           cwd: tmpDir,
-          timeout: 30000,
+          timeout: 120000,
           maxBuffer: 10 * 1024 * 1024,
         })
         log = result.stdout + result.stderr
-      }
-      success = true
-    } catch (err: unknown) {
-      const error = err as { code?: string; stdout?: string; message?: string }
-      if (error.code === 'ENOENT') {
-        return {
-          success: false,
-          pdf: null,
-          log: `${compiler} not found. Please install MiKTeX or TeX Live and ensure it is on your PATH.`,
+      } catch (err: unknown) {
+        const error = err as ExecError
+        if (error.code === 'ENOENT') {
+          return {
+            success: false,
+            pdf: null,
+            log: `${compiler} not found. Please install MiKTeX or TeX Live and ensure it is on your PATH.`,
+          }
         }
+        // Non-zero exit: capture output and continue to the next pass.
+        // XeLaTeX/pdfLaTeX may exit with code 1 due to warnings yet still
+        // produce a usable PDF on this or the next pass.
+        log = ((error.stdout ?? '') + (error.stderr ?? '')) || error.message || ''
       }
-      log = error.stdout || error.message || 'Compilation failed'
-      success = false
     }
 
     try {
