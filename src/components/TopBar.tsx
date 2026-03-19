@@ -8,9 +8,12 @@ interface TopBarProps {
   compiler: 'pdflatex' | 'xelatex'
   /** True when a folder workspace is open (enables Save All). */
   hasWorkspace: boolean
+  /** Whether auto-compile on edit is enabled. */
+  autoCompile: boolean
   onCompile: () => void
   onFilesSelected: (files: FileList) => void
   onCompilerChange: (compiler: 'pdflatex' | 'xelatex') => void
+  onAutoCompileChange: (autoCompile: boolean) => void
   onOpenFolder: () => void
   onSaveFile: () => void
   onSaveFolder: () => void
@@ -48,9 +51,11 @@ export default function TopBar({
   compileError,
   compiler,
   hasWorkspace,
+  autoCompile,
   onCompile,
   onFilesSelected,
   onCompilerChange,
+  onAutoCompileChange,
   onOpenFolder,
   onSaveFile,
   onSaveFolder,
@@ -153,6 +158,19 @@ export default function TopBar({
         className="hidden"
         onChange={handleFileChange}
       />
+
+      {/* Auto-compile toggle */}
+      <button
+        onClick={() => onAutoCompileChange(!autoCompile)}
+        className={`shrink-0 text-sm px-3 py-1.5 rounded border transition-colors ${
+          autoCompile
+            ? 'border-cyan-500 text-cyan-400 bg-cyan-500/10'
+            : 'border-zinc-600 text-zinc-400 hover:border-cyan-500 hover:text-cyan-400'
+        }`}
+        title={autoCompile ? 'Auto-compile on edit is ON — click to switch to manual' : 'Auto-compile is OFF — click to enable auto-compile on edit'}
+      >
+        {autoCompile ? '⚡ Auto' : '⚡ Manual'}
+      </button>
 
       {/* Compile button */}
       <button
