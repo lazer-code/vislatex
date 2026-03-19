@@ -325,6 +325,7 @@ const Editor = forwardRef(function Editor(
         mutationObserver?.disconnect()
         if (rafId !== undefined) cancelAnimationFrame(rafId)
       }
+    }
 
     init()
 
