@@ -92,6 +92,14 @@ body {
  * Note: this property only affects bidi rendering – it does not alter
  * computed positions or class names, so Monaco's hit-testing and
  * click→caret logic are unaffected.
+ *
+ * LaTeX keyword tokens (e.g. \subsubsection*) additionally receive
+ * unicode-bidi:isolate-override + direction:ltr via JavaScript in
+ * Editor.tsx (applyLineDirections).  Those spans contain neutral characters
+ * (\ and *) that the N1/N2 rules would resolve as RTL in an RTL context,
+ * reversing them to *subsubsection\.  The isolate-override forces all
+ * characters inside the keyword span to strict LTR logical order so the
+ * command name is always displayed correctly.
  */
 .monaco-editor .view-lines .view-line[data-direction="rtl"] > span > span {
   unicode-bidi: isolate;

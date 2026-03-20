@@ -117,6 +117,15 @@ export default function Editor({ value, onChange, diagnostics }: EditorProps) {
        * Walks every rendered .view-line DOM element and applies the appropriate
        * direction class based on the rtlLines set.  Called after any event that
        * may have caused Monaco to create or recycle view-line elements.
+       *
+       * For RTL lines we also fix a secondary bidi issue: LaTeX keyword tokens
+       * such as \subsubsection* contain neutral characters (\ and *) that the
+       * Unicode Bidi Algorithm resolves as RTL when the enclosing span has
+       * direction:rtl, causing them to display as *subsubsection\.  We prevent
+       * this by applying unicode-bidi:isolate-override + direction:ltr to any
+       * token span whose text begins with \ so that all characters within that
+       * span are forced into logical LTR order while the span still presents as
+       * an isolated atom to the surrounding RTL bidi algorithm.
        */
       function applyLineDirections() {
         const dom = editor.getDomNode()
@@ -126,10 +135,21 @@ export default function Editor({ value, onChange, diagnostics }: EditorProps) {
           const top = parseInt(el.style.top || '0', 10)
           const lineNumber = logicalLineForTop(top)
           if (lineNumber === undefined) return
-          if (rtlLines.has(lineNumber)) {
-            el.setAttribute('data-direction', 'rtl')
-          } else {
-            el.setAttribute('data-direction', 'ltr')
+          const isRtl = rtlLines.has(lineNumber)
+          el.setAttribute('data-direction', isRtl ? 'rtl' : 'ltr')
+
+          // Fix neutral-character reordering inside LaTeX keyword spans.
+          const innerSpan = el.querySelector<HTMLElement>(':scope > span')
+          if (innerSpan) {
+            innerSpan.querySelectorAll<HTMLElement>(':scope > span').forEach((tokenSpan) => {
+              if (isRtl && (tokenSpan.textContent ?? '').startsWith('\\')) {
+                tokenSpan.style.unicodeBidi = 'isolate-override'
+                tokenSpan.style.direction = 'ltr'
+              } else {
+                tokenSpan.style.removeProperty('unicode-bidi')
+                tokenSpan.style.removeProperty('direction')
+              }
+            })
           }
         })
       }
