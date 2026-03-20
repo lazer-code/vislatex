@@ -23,11 +23,27 @@ const RTL_CHAR_RE =
 const LEADING_NOISE_RE = /^[\s\-*•\u2022\u2023\u25AA\u25CF]*(?:\d+[.)]\s*|[a-zA-Z][.)]\s*)*/
 
 /**
+ * Strips one or more consecutive LaTeX commands of the form \cmd{ or \cmd*{
+ * (including any trailing whitespace) so that the content inside the braces
+ * is exposed for direction detection.  Only the opening sequences are stripped;
+ * closing braces remain in the result but do not affect direction detection.
+ * For example:
+ *   \subsection*{א. ...}    →  א. ...}
+ *   \textbf{\textit{שלום}}  →  שלום}}
+ */
+const LEADING_LATEX_CMD_RE = /^(?:\\[a-zA-Z]+\*?\{)+\s*/
+
+/**
  * Returns the first character that carries meaningful directional information,
- * skipping leading whitespace, punctuation, and common list markers.
+ * skipping leading whitespace, punctuation, common list markers, and LaTeX
+ * command prefixes such as \subsection*{ or \textbf{.
  */
 export function getFirstMeaningfulChar(text: string): string | null {
-  const stripped = text.replace(LEADING_NOISE_RE, '')
+  // Strip whitespace, bullets, and numbered/lettered list prefixes.
+  let stripped = text.replace(LEADING_NOISE_RE, '')
+  // Strip a leading LaTeX command with braces (e.g. \subsection*{) so that
+  // \subsection*{Hebrew text} correctly yields the Hebrew character.
+  stripped = stripped.replace(LEADING_LATEX_CMD_RE, '')
   return stripped.length > 0 ? stripped[0] : null
 }
 
