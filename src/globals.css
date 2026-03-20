@@ -44,16 +44,28 @@ body {
  * className === 'view-line' exactly; adding extra classes would break click/caret
  * placement on all non-empty lines.
  *
- * We only use text-align to visually right-anchor RTL lines.  We intentionally
- * do NOT change the `direction` property on view-line elements because Monaco's
- * internal hit-testing uses its own glyph metrics in LTR coordinate space;
- * overriding `direction` on the element causes the visual text position to
- * diverge from Monaco's calculated position, which also breaks click/caret placement.
+ * When a line contains RTL characters Monaco emits the content span as
+ * <span dir="ltr"> to keep its own coordinate system LTR.  This locks the bidi
+ * paragraph base direction to LTR, which causes mixed Hebrew+math lines to
+ * render in the wrong sentence order (the "antigravity" effect).
+ *
+ * The fix targets the inner content span (.view-line > span), NOT the
+ * .view-line div itself.  The .view-line > span has position:absolute with
+ * left:auto; its containing block is .view-line.  Because .view-line stays LTR,
+ * the child span continues to be placed at the left edge (left:0) exactly as
+ * Monaco expects.  Setting direction:rtl only on the inner span changes the
+ * bidi paragraph base direction for the text inside, so that the Unicode
+ * Bidirectional Algorithm orders runs correctly (Hebrew right → math centre →
+ * Hebrew left) without disturbing Monaco's layout arithmetic.
+ *
+ * Click → caret placement is safe: for lines where containsRTL is true Monaco
+ * uses the browser's caretRangeFromPoint / caretPositionFromPoint APIs (which
+ * honour CSS direction) together with span-sibling counting to map a click to a
+ * logical column.  It does NOT rely on a pre-cached LTR pixel-offset array for
+ * RTL lines, so overriding direction on the inner span does not break it.
  */
-.monaco-editor .view-lines .view-line[data-direction="rtl"] {
-  text-align: right;
-  /* Prevent right-aligned text from visually overlapping the resize handle. */
-  padding-right: 6px;
+.monaco-editor .view-lines .view-line[data-direction="rtl"] > span {
+  direction: rtl !important;
 }
 
 .monaco-editor .view-lines .view-line[data-direction="ltr"] {

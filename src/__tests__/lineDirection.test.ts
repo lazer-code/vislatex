@@ -56,6 +56,22 @@ describe('getFirstMeaningfulChar', () => {
   it('skips a dash marker and returns the Hebrew character', () => {
     expect(getFirstMeaningfulChar('- מאחר')).toBe('מ')
   })
+
+  it('skips a LaTeX command prefix \\subsection*{ and returns the Hebrew character', () => {
+    expect(getFirstMeaningfulChar('\\subsection*{א. $|x-2| \\le 5$}')).toBe('א')
+  })
+
+  it('skips a LaTeX command prefix \\textbf{ and returns the Hebrew character', () => {
+    expect(getFirstMeaningfulChar('\\textbf{שלום}')).toBe('ש')
+  })
+
+  it('skips nested LaTeX command prefixes and returns the Hebrew character', () => {
+    expect(getFirstMeaningfulChar('\\textbf{\\textit{שלום}}')).toBe('ש')
+  })
+
+  it('skips a LaTeX command prefix \\section{ and returns the English character', () => {
+    expect(getFirstMeaningfulChar('\\section{Introduction}')).toBe('I')
+  })
 })
 
 describe('getLineDirection', () => {
@@ -71,6 +87,18 @@ describe('getLineDirection', () => {
     expect(
       getLineDirection('מאחר ויש נקודת אפס אחת $x=2$, נבדוק את התחומים הרלוונטיים:')
     ).toBe('rtl')
+  })
+
+  it('returns "rtl" for a Hebrew paragraph line (no math)', () => {
+    expect(
+      getLineDirection(
+        'מצאו את קבוצת המספרים המקיימים את כל אחד מהאי-שוויונות הבאים וסרטטו את תשובתכם על ציר המספרים:'
+      )
+    ).toBe('rtl')
+  })
+
+  it('returns "rtl" for a LaTeX \\subsection*{ line with Hebrew content', () => {
+    expect(getLineDirection('\\subsection*{א. $|x-2| \\le 5$}')).toBe('rtl')
   })
 
   it('returns "ltr" for an empty line', () => {
