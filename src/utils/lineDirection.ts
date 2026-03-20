@@ -44,6 +44,10 @@ export function getFirstMeaningfulChar(text: string): string | null {
   // Strip a leading LaTeX command with braces (e.g. \subsection*{) so that
   // \subsection*{Hebrew text} correctly yields the Hebrew character.
   stripped = stripped.replace(LEADING_LATEX_CMD_RE, '')
+  // Strip noise a second time: the content inside the braces may itself start
+  // with a numbered or lettered prefix (e.g. \subsubsection*{a. Hebrew text}).
+  // Without this second pass the leading "a." would be mistaken for LTR content.
+  stripped = stripped.replace(LEADING_NOISE_RE, '')
   return stripped.length > 0 ? stripped[0] : null
 }
 

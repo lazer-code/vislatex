@@ -72,6 +72,22 @@ describe('getFirstMeaningfulChar', () => {
   it('skips a LaTeX command prefix \\section{ and returns the English character', () => {
     expect(getFirstMeaningfulChar('\\section{Introduction}')).toBe('I')
   })
+
+  it('skips \\subsubsection*{ plus a lettered prefix and returns the Hebrew character', () => {
+    // \subsubsection*{a. Hebrew text} – the Latin "a." inside the braces must
+    // not be mistaken for LTR content; the second LEADING_NOISE_RE pass strips it.
+    // (The fix is needed because LEADING_NOISE_RE uses [a-zA-Z] for letter
+    // prefixes, so only a *Latin* prefix exercises the regression.)
+    expect(getFirstMeaningfulChar('\\subsubsection*{a. תוכן בעברית}')).toBe('ת')
+  })
+
+  it('skips \\subsubsection*{ plus a numbered prefix and returns the Hebrew character', () => {
+    expect(getFirstMeaningfulChar('\\subsubsection*{1. תוכן בעברית}')).toBe('ת')
+  })
+
+  it('skips \\section{ plus a lettered prefix and returns the Hebrew character', () => {
+    expect(getFirstMeaningfulChar('\\section{b. שלום}')).toBe('ש')
+  })
 })
 
 describe('getLineDirection', () => {
@@ -99,6 +115,20 @@ describe('getLineDirection', () => {
 
   it('returns "rtl" for a LaTeX \\subsection*{ line with Hebrew content', () => {
     expect(getLineDirection('\\subsection*{א. $|x-2| \\le 5$}')).toBe('rtl')
+  })
+
+  it('returns "rtl" for \\subsubsection*{ with a lettered prefix before Hebrew', () => {
+    // Regression: without the second LEADING_NOISE_RE pass the Latin "a." was
+    // seen first and the line was incorrectly classified as LTR.
+    expect(getLineDirection('\\subsubsection*{a. תוכן בעברית}')).toBe('rtl')
+  })
+
+  it('returns "rtl" for \\subsubsection*{ with a numbered prefix before Hebrew', () => {
+    expect(getLineDirection('\\subsubsection*{1. שלום עולם}')).toBe('rtl')
+  })
+
+  it('returns "ltr" for \\subsubsection*{ with purely English content after prefix', () => {
+    expect(getLineDirection('\\subsubsection*{a. Introduction}')).toBe('ltr')
   })
 
   it('returns "ltr" for an empty line', () => {
