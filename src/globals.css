@@ -44,25 +44,26 @@ body {
  * className === 'view-line' exactly; adding extra classes would break click/caret
  * placement on all non-empty lines.
  *
- * All RTL lines — whether they are plain paragraph text (שלום עולם) or a LaTeX
- * command line (\subsubsection*{Hebrew + English}) — receive the same treatment:
+ * Three direction types are applied:
  *
  *   data-direction="rtl"
- *     The inner content span (.view-line > span) receives:
- *       direction: rtl  – sets the Unicode Bidi paragraph base direction to RTL
- *                         so the Bidi Algorithm places Hebrew/Arabic words and
- *                         inline LTR islands (e.g. $x^2$, English words) in the
- *                         correct visual sentence order.
- *       text-align: right – pushes the line to the right edge of the editor,
- *                           which is the natural reading position for RTL text.
- *     For lines starting with a LaTeX command (e.g. \subsubsection*{…}),
- *     Editor.tsx additionally applies unicode-bidi:isolate-override + direction:ltr
- *     to any token span whose text starts with \ so the command name is never
- *     visually reversed by the RTL paragraph base direction.
+ *     Pure RTL paragraph lines (start with Hebrew/Arabic text, no LaTeX cmd).
+ *     The inner content span (.view-line > span) receives direction:rtl so the
+ *     Unicode Bidirectional Algorithm uses RTL as the paragraph base direction,
+ *     preserving correct sentence order for mixed Hebrew+math lines.
+ *     text-align:right pushes the line to the right edge of the editor.
+ *
+ *   data-direction="rtl-cmd"
+ *     Lines that start with a LaTeX command but have RTL content inside their
+ *     braces (e.g. \subsubsection*{Hebrew Introduction}).  These are
+ *     right-aligned but keep the LTR paragraph base direction so the command
+ *     name (\something) appears to the LEFT of its braces (logical order),
+ *     and the mixed-language content inside the braces renders correctly via
+ *     unicode-bidi:isolate on each token span.
  *
  *   data-direction="ltr"
  *     Explicit left-alignment reset (Monaco default is ltr, but we set it
- *     explicitly to allow clean toggling without residual styles).
+ *     explicitly to allow toggling without residual styles).
  *
  * Click → caret placement is safe: for lines where containsRTL is true Monaco
  * uses the browser's caretRangeFromPoint / caretPositionFromPoint APIs (which
@@ -76,34 +77,35 @@ body {
 }
 
 /*
- * Isolate each Monaco token span (the <span> children produced by the
- * syntax-highlighter) inside an RTL view-line so that the Unicode
- * Bidirectional Algorithm treats every token as an independent bidi unit.
- *
- * Without isolation the bidi algorithm resolves $ (U+0024, class ET –
- * European Terminator) differently for the opening and closing $$ of a
- * display-math block, causing both $$ groups to visually migrate to the same
- * side of the math content instead of wrapping it.
- *
- * With unicode-bidi: isolate each token span is presented to the parent
- * bidi algorithm as a single opaque character whose direction is determined
- * solely by the strong characters *inside* that span.  The math token
- * span(s) therefore behave as a unified LTR island, keeping both $$ and
- * the equation together and properly wrapping the expression.
+ * Right-align LaTeX-command lines whose RTL content is inside braces.
+ * We keep the paragraph base direction as LTR (no direction:rtl override) so
+ * the command name (\something) stays visually to the LEFT of its {} braces,
+ * matching how the user typed it.  The line is simply pushed to the right edge.
+ */
+.monaco-editor .view-lines .view-line[data-direction="rtl-cmd"] > span {
+  text-align: right;
+}
+
+/*
+ * Isolate each Monaco token span inside an RTL or RTL-command view-line so
+ * that the Unicode Bidirectional Algorithm treats every token as an independent
+ * bidi unit.  This preserves correct rendering of mixed Hebrew+math content
+ * (e.g. $$ delimiters stay on the correct side of the equation) and keeps
+ * Hebrew/LTR spans as coherent units within rtl-cmd lines.
  *
  * Note: this property only affects bidi rendering – it does not alter
  * computed positions or class names, so Monaco's hit-testing and
  * click→caret logic are unaffected.
  *
- * LaTeX keyword tokens (e.g. \subsubsection*) additionally receive
- * unicode-bidi:isolate-override + direction:ltr via JavaScript in
- * Editor.tsx (applyLineDirections).  Those spans contain neutral characters
- * (\ and *) that the N1/N2 rules would resolve as RTL in an RTL context,
- * reversing them to *subsubsection\.  The isolate-override forces all
- * characters inside the keyword span to strict LTR logical order so the
- * command name is always displayed correctly.
+ * LaTeX keyword tokens (e.g. \subsubsection*) on pure 'rtl' lines
+ * additionally receive unicode-bidi:isolate-override + direction:ltr via
+ * JavaScript in Editor.tsx (applyLineDirections).  Those spans contain
+ * neutral characters (\ and *) that the N1/N2 rules would resolve as RTL in
+ * an RTL context, reversing them to *subsubsection\.  The isolate-override
+ * forces all characters inside the keyword span to strict LTR logical order.
  */
-.monaco-editor .view-lines .view-line[data-direction="rtl"] > span > span {
+.monaco-editor .view-lines .view-line[data-direction="rtl"] > span > span,
+.monaco-editor .view-lines .view-line[data-direction="rtl-cmd"] > span > span {
   unicode-bidi: isolate;
 }
 
