@@ -1,15 +1,11 @@
-import PDFCanvas from './PDFCanvas'
-
 interface PDFViewerProps {
   pdfUrl: string | null
   isCompiling: boolean
   compileError: boolean
   onReload: () => void
-  /** Called when the user clicks a position in the PDF (inverse search). */
-  onSourceJump?: (nearbyText: string) => void
 }
 
-export default function PDFViewer({ pdfUrl, isCompiling, compileError, onReload, onSourceJump }: PDFViewerProps) {
+export default function PDFViewer({ pdfUrl, isCompiling, compileError, onReload }: PDFViewerProps) {
   if (!pdfUrl) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-zinc-900 gap-4 text-zinc-500">
@@ -84,20 +80,12 @@ export default function PDFViewer({ pdfUrl, isCompiling, compileError, onReload,
           Open in new tab ↗
         </a>
       </div>
-      {/* PDF content: use PDFCanvas for interactive click-to-source, or fall
-          back to iframe in browsers that lack the pdfjs worker (unlikely in
-          Electron, but kept for safety). */}
-      <div className="flex-1 overflow-hidden relative">
-        <PDFCanvas pdfUrl={pdfUrl} onSourceJump={onSourceJump} />
-        {isCompiling && (
-          <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/60 pointer-events-none">
-            <svg className="animate-spin h-6 w-6 text-cyan-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          </div>
-        )}
-      </div>
+      <iframe
+        key={pdfUrl}
+        src={pdfUrl}
+        className="w-full flex-1 border-0"
+        title="PDF Preview"
+      />
     </div>
   )
 }

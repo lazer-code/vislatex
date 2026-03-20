@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import TopBar from './TopBar'
-import Editor, { EditorHandle } from './Editor'
+import Editor from './Editor'
 import PDFViewer from './PDFViewer'
 import LogPanel from './LogPanel'
 import DropZone from './DropZone'
@@ -164,49 +164,6 @@ export default function VisLatexApp() {
 
   // ── Directory handle for save-back ───────────────────────────────────────
   const dirHandleRef = useRef<FSDirHandleWritable | null>(null)
-
-  // ── Editor imperative handle (used for inverse search jump) ─────────────
-  const editorHandleRef = useRef<EditorHandle | null>(null)
-
-  /**
-   * Inverse search: called when the user clicks a position in the PDF.
-   *
-   * `nearbyText` is a short string extracted by pdfjs from the text layer
-   * at the click point.  We search the current source for the nearest line
-   * that contains (a substring of) that text, then ask the editor to jump
-   * to that line.
-   *
-   * Search strategy:
-   *   1. Exact substring match (case-insensitive).
-   *   2. If no exact match, try each whitespace-separated word from the
-   *      extracted text (longest first).
-   *   3. If still no match, do nothing (the user clicked on a non-text area).
-   */
-  const handleSourceJump = useCallback((nearbyText: string) => {
-    const source = workspace && activeFilePath
-      ? workspace.files.find((f) => f.path === activeFilePath)?.content ?? ''
-      : latexSource
-
-    const lines = source.split('\n')
-    const needle = nearbyText.toLowerCase()
-
-    // 1. Exact substring match
-    let foundLine = lines.findIndex((l) => l.toLowerCase().includes(needle))
-
-    // 2. Word-by-word match (longest word first for best specificity)
-    if (foundLine === -1) {
-      const words = nearbyText.split(/\s+/).sort((a, b) => b.length - a.length)
-      for (const word of words) {
-        if (word.length < 3) continue  // skip very short words
-        foundLine = lines.findIndex((l) => l.toLowerCase().includes(word.toLowerCase()))
-        if (foundLine !== -1) break
-      }
-    }
-
-    if (foundLine !== -1) {
-      editorHandleRef.current?.jumpToLine(foundLine + 1)  // 1-based
-    }
-  }, [workspace, activeFilePath, latexSource])
 
   const compile = useCallback(
     async (
@@ -978,7 +935,7 @@ export default function VisLatexApp() {
         {/* Editor + PDF split */}
         <div className="flex flex-1 overflow-hidden">
           <div style={{ width: `${editorPct}%` }} className="flex flex-col overflow-hidden">
-            <Editor ref={editorHandleRef} value={editorValue} onChange={handleEditorChange} diagnostics={diagnostics} />
+            <Editor value={editorValue} onChange={handleEditorChange} diagnostics={diagnostics} />
           </div>
           {/* Editor/PDF resize handle */}
           <div
@@ -1013,7 +970,6 @@ export default function VisLatexApp() {
               isCompiling={isCompiling}
               compileError={compileError}
               onReload={() => compile(latexSource, assets, compiler)}
-              onSourceJump={handleSourceJump}
             />
           </div>
         </div>
