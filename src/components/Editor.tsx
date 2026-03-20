@@ -92,9 +92,8 @@ export default function Editor({ value, onChange, diagnostics }: EditorProps) {
       setIsLoaded(true)
 
       // --- Per-line RTL/LTR alignment ---
-      // Tracks which logical line numbers (1-based) need non-LTR treatment.
-      // Values: 'rtl' = pure RTL paragraph; 'rtl-cmd' = LaTeX command with RTL content.
-      const lineTypes = new Map<number, 'rtl' | 'rtl-cmd'>()
+      // Tracks which logical line numbers (1-based) are RTL.
+      const rtlLines = new Set<number>()
 
       /**
        * Returns the logical line number for a given pixel-top value reported by
@@ -116,19 +115,17 @@ export default function Editor({ value, onChange, diagnostics }: EditorProps) {
 
       /**
        * Walks every rendered .view-line DOM element and applies the appropriate
-       * direction attribute based on the lineTypes map.  Called after any event
+       * direction attribute based on the rtlLines set.  Called after any event
        * that may have caused Monaco to create or recycle view-line elements.
        *
-       * For pure 'rtl' lines (direction:rtl base) we also fix a secondary bidi
-       * issue: LaTeX keyword tokens such as \subsubsection* contain neutral
-       * characters (\ and *) that the Unicode Bidi Algorithm resolves as RTL
-       * when the enclosing span has direction:rtl, causing them to display as
-       * *subsubsection\.  We prevent this by applying
-       * unicode-bidi:isolate-override + direction:ltr to any token span whose
-       * text begins with \.
-       *
-       * For 'rtl-cmd' lines (LTR paragraph base + text-align:right) no such
-       * override is needed: the command tokens are already in a LTR context.
+       * For RTL lines we also fix a secondary bidi issue: LaTeX keyword tokens
+       * such as \subsubsection* contain neutral characters (\ and *) that the
+       * Unicode Bidi Algorithm resolves as RTL when the enclosing span has
+       * direction:rtl, causing them to display as *subsubsection\.  We prevent
+       * this by applying unicode-bidi:isolate-override + direction:ltr to any
+       * token span whose text begins with \ so that all characters within that
+       * span are forced into logical LTR order while the span still presents as
+       * an isolated atom to the surrounding RTL bidi algorithm.
        */
       function applyLineDirections() {
         const dom = editor.getDomNode()
@@ -138,15 +135,15 @@ export default function Editor({ value, onChange, diagnostics }: EditorProps) {
           const top = parseInt(el.style.top || '0', 10)
           const lineNumber = logicalLineForTop(top)
           if (lineNumber === undefined) return
-          const lineType = lineTypes.get(lineNumber) ?? 'ltr'
-          el.setAttribute('data-direction', lineType)
+          const isRtl = rtlLines.has(lineNumber)
+          el.setAttribute('data-direction', isRtl ? 'rtl' : 'ltr')
 
           // Fix neutral-character reordering inside LaTeX keyword spans on
-          // pure RTL (direction:rtl base) lines only.
+          // all RTL lines (including command lines like \subsubsection*{...}).
           const innerSpan = el.querySelector<HTMLElement>(':scope > span')
           if (innerSpan) {
             innerSpan.querySelectorAll<HTMLElement>(':scope > span').forEach((tokenSpan) => {
-              if (lineType === 'rtl' && (tokenSpan.textContent ?? '').startsWith('\\')) {
+              if (isRtl && (tokenSpan.textContent ?? '').startsWith('\\')) {
                 tokenSpan.style.unicodeBidi = 'isolate-override'
                 tokenSpan.style.direction = 'ltr'
               } else {
@@ -163,23 +160,21 @@ export default function Editor({ value, onChange, diagnostics }: EditorProps) {
         const model = editor.getModel()
         if (!model || lineNumber < 1 || lineNumber > model.getLineCount()) return
         const content = model.getLineContent(lineNumber)
-        const type = getLineDirectionType(content)
-        if (type !== 'ltr') {
-          lineTypes.set(lineNumber, type)
+        if (getLineDirectionType(content) === 'rtl') {
+          rtlLines.add(lineNumber)
         } else {
-          lineTypes.delete(lineNumber)
+          rtlLines.delete(lineNumber)
         }
       }
 
-      /** Scans every line in the model and rebuilds the lineTypes map. */
+      /** Scans every line in the model and rebuilds the rtlLines set. */
       function scanAllLines() {
         const model = editor.getModel()
         if (!model) return
-        lineTypes.clear()
+        rtlLines.clear()
         for (let i = 1; i <= model.getLineCount(); i++) {
           const content = model.getLineContent(i)
-          const type = getLineDirectionType(content)
-          if (type !== 'ltr') lineTypes.set(i, type)
+          if (getLineDirectionType(content) === 'rtl') rtlLines.add(i)
         }
       }
 

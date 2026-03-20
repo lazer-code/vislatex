@@ -63,4 +63,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('pdf-update', handler)
     return () => ipcRenderer.removeListener('pdf-update', handler)
   },
+  /** Start watching a workspace directory for external changes. */
+  watchDirectory: (rootPath: string): void =>
+    ipcRenderer.send('watch-directory', rootPath),
+  /** Stop watching a previously watched directory. */
+  stopWatchingDirectory: (rootPath: string): void =>
+    ipcRenderer.send('stop-watching-directory', rootPath),
+  /** Registers a callback invoked whenever a watched directory changes.
+   *  The payload contains rootPath and the re-scanned file list.
+   *  Returns a cleanup function that removes the listener. */
+  onWorkspaceChanged: (
+    callback: (payload: { rootPath: string; files: FileEntry[] }) => void
+  ): (() => void) => {
+    type IpcHandler = Parameters<typeof ipcRenderer.on>[1]
+    const handler: IpcHandler = (_: unknown, payload: { rootPath: string; files: FileEntry[] }) =>
+      callback(payload)
+    ipcRenderer.on('workspace-changed', handler)
+    return () => ipcRenderer.removeListener('workspace-changed', handler)
+  },
 })

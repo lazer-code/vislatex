@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { writeFile, mkdir, readFile, rm, readdir } from 'fs/promises'
+import { watch } from 'fs'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import path from 'path'
@@ -109,6 +110,53 @@ ipcMain.handle('open-directory', async (event) => {
   const name = path.basename(rootPath)
   const files = await scanDirectory(rootPath, '')
   return { rootPath, name, files }
+})
+
+// ── watch-directory IPC ───────────────────────────────────────────────────────
+
+/** Active fs.watch instances keyed by rootPath so they can be stopped. */
+const activeWatchers = new Map<string, ReturnType<typeof watch>>()
+
+ipcMain.on('watch-directory', (event, rootPath: string) => {
+  if (typeof rootPath !== 'string' || !rootPath) return
+
+  // Stop any previously registered watcher for this path.
+  const existing = activeWatchers.get(rootPath)
+  if (existing) {
+    existing.close()
+    activeWatchers.delete(rootPath)
+  }
+
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+  const watcher = watch(rootPath, { recursive: true }, () => {
+    if (debounceTimer) clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(async () => {
+      try {
+        const files = await scanDirectory(rootPath, '')
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('workspace-changed', { rootPath, files })
+        }
+      } catch {
+        // Directory may have been removed; ignore.
+      }
+    }, 500)
+  })
+
+  watcher.on('error', () => {
+    watcher.close()
+    activeWatchers.delete(rootPath)
+  })
+
+  activeWatchers.set(rootPath, watcher)
+})
+
+ipcMain.on('stop-watching-directory', (_event, rootPath: string) => {
+  const watcher = activeWatchers.get(rootPath)
+  if (watcher) {
+    watcher.close()
+    activeWatchers.delete(rootPath)
+  }
 })
 
 // ── delete-path IPC ───────────────────────────────────────────────────────────

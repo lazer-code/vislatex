@@ -65,6 +65,15 @@ interface ElectronAPI {
   /** Registers a callback invoked whenever a new PDF is pushed to this window.
    *  Returns a cleanup function that removes the listener. */
   onPdfUpdate(callback: (pdfBase64: string | null) => void): () => void
+  /** Starts watching rootPath for external file-system changes. */
+  watchDirectory(rootPath: string): void
+  /** Stops watching a previously watched rootPath. */
+  stopWatchingDirectory(rootPath: string): void
+  /** Registers a callback invoked whenever a watched directory changes.
+   *  Returns a cleanup function that removes the listener. */
+  onWorkspaceChanged(
+    callback: (payload: { rootPath: string; files: ElectronFileEntry[] }) => void
+  ): () => void
 }
 
 declare global {

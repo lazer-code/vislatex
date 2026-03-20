@@ -146,8 +146,9 @@ export default function VisLatexApp() {
   /**
    * Absolute filesystem path of the opened workspace root (set when the
    * folder was opened via Electron's native dialog).  Used for real-FS
-   * deletion.
+   * deletion and for the folder-watcher effect.
    */
+  const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null)
   const workspaceRootRef = useRef<string | null>(null)
 
   const pdfUrlRef = useRef<string | null>(null)
@@ -338,6 +339,55 @@ export default function VisLatexApp() {
     })
   }, [])
 
+  // ── Folder auto-refresh (Electron only) ─────────────────────────────────
+  // When a workspace is opened via the Electron native dialog (workspaceRootRef
+  // is set), watch the directory for external changes and merge updates into
+  // the workspace state.  Files that are currently open in the editor are NOT
+  // overwritten so the user's in-progress edits are preserved.
+  useEffect(() => {
+    const api = typeof window !== 'undefined' ? window.electronAPI : undefined
+    if (!api?.watchDirectory || !api?.onWorkspaceChanged || !api?.stopWatchingDirectory) return
+
+    const rootPath = workspaceRootRef.current
+    if (!rootPath) return
+
+    api.watchDirectory(rootPath)
+
+    const cleanup = api.onWorkspaceChanged((payload) => {
+      if (payload.rootPath !== workspaceRootRef.current) return
+      const activeFile = activeFilePath
+      setWorkspace((prev) => {
+        if (!prev) return prev
+        const incoming: WorkspaceFile[] = payload.files.map((f) => {
+          const wsFile: WorkspaceFile = { type: 'file', path: f.path, name: f.name }
+          if (f.isText) {
+            wsFile.content = f.data
+          } else {
+            const bytes = Uint8Array.from(atob(f.data), (c) => c.charCodeAt(0))
+            wsFile.blob = new Blob([bytes])
+          }
+          return wsFile
+        })
+        // Keep existing in-memory edits for the currently active file.
+        const merged = incoming.map((inFile) => {
+          if (inFile.path === activeFile) {
+            const existing = prev.files.find((pf) => pf.path === inFile.path)
+            if (existing) return existing
+          }
+          return inFile
+        })
+        return { ...prev, files: merged }
+      })
+    })
+
+    return () => {
+      cleanup()
+      api.stopWatchingDirectory(rootPath)
+    }
+  // Re-run whenever the workspace root changes (new folder opened).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceRootRef.current])
+
   // ── Workspace helpers ────────────────────────────────────────────────────
 
   /** Initialise workspace state from an array of WorkspaceFile entries. */
@@ -432,6 +482,7 @@ export default function VisLatexApp() {
         const result = await window.electronAPI.openDirectory()
         if (!result) return
         workspaceRootRef.current = result.rootPath
+        setWorkspaceRoot(result.rootPath)
         dirHandleRef.current = null
         const files: WorkspaceFile[] = result.files.map((f) => {
           const wsFile: WorkspaceFile = { type: 'file', path: f.path, name: f.name }
