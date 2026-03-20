@@ -1,14 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import TopBar from './TopBar'
 import Editor from './Editor'
-import PDFViewer from './PDFViewer'
 import LogPanel from './LogPanel'
 import DropZone from './DropZone'
 import AssetPanel from './AssetPanel'
 import FileExplorer from './FileExplorer'
 import MiKTeXWarningModal from './MiKTeXWarningModal'
 import { WorkspaceState, WorkspaceFile, isTextFile } from '../types/workspace'
-import { computeEditorPct, computeSidebarWidth } from '../utils/splitterResize'
+import { computeSidebarWidth } from '../utils/splitterResize'
 
 // Minimal local types for the File System Access API (not yet in @types/lib)
 interface FSFileHandle {
@@ -157,7 +156,6 @@ export default function VisLatexApp() {
 
   // ── Resizable pane state ─────────────────────────────────────────────────
   const [sidebarWidth, setSidebarWidth] = useState(224)
-  const [editorPct, setEditorPct] = useState(50)
   const mainAreaRef = useRef<HTMLDivElement>(null)
 
   const [showMiKTeXWarning, setShowMiKTeXWarning] = useState(false)
@@ -221,9 +219,12 @@ export default function VisLatexApp() {
             if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
             pdfUrlRef.current = url
             setPdfUrl(url)
+            // Push the PDF to the detached preview window (auto-opens it).
+            window.electronAPI?.pushPdf?.(data.pdf)
           } else {
             setPdfUrl(null)
             pdfUrlRef.current = null
+            window.electronAPI?.pushPdf?.(null)
             setLogOpen(true)
           }
         } catch (err) {
@@ -263,9 +264,12 @@ export default function VisLatexApp() {
           if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
           pdfUrlRef.current = url
           setPdfUrl(url)
+          // Push the PDF to the detached preview window (auto-opens it).
+          window.electronAPI?.pushPdf?.(data.pdf)
         } else {
           setPdfUrl(null)
           pdfUrlRef.current = null
+          window.electronAPI?.pushPdf?.(null)
           setLogOpen(true)
         }
       } catch (err) {
@@ -870,6 +874,7 @@ export default function VisLatexApp() {
         onOpenFolder={handleOpenFolder}
         onSaveFile={handleSaveFile}
         onSaveFolder={handleSaveFolder}
+        onOpenPreview={() => window.electronAPI?.openPreviewWindow?.()}
       />
 
       {/* Hidden folder input for webkitdirectory fallback */}
@@ -932,46 +937,9 @@ export default function VisLatexApp() {
           </>
         )}
 
-        {/* Editor + PDF split */}
+        {/* Editor — takes full remaining width now that PDF is in its own window */}
         <div className="flex flex-1 overflow-hidden">
-          <div style={{ width: `${editorPct}%` }} className="flex flex-col overflow-hidden">
-            <Editor value={editorValue} onChange={handleEditorChange} diagnostics={diagnostics} />
-          </div>
-          {/* Editor/PDF resize handle */}
-          <div
-            className="w-1 shrink-0 bg-zinc-700 hover:bg-cyan-500 cursor-col-resize flex flex-col items-center justify-center gap-0.5 transition-colors"
-            onMouseDown={(e) => {
-              e.preventDefault()
-              document.body.style.userSelect = 'none'
-              const container = mainAreaRef.current
-              if (!container) return
-              const rect = container.getBoundingClientRect()
-              const startX = e.clientX
-              const startPct = editorPct
-              const totalW = rect.width - (workspace ? sidebarWidth + 4 : 0) - 4
-              const onMove = (mv: MouseEvent) => {
-                setEditorPct(computeEditorPct(startPct, startX, mv.clientX, totalW))
-              }
-              const onUp = () => {
-                document.body.style.userSelect = ''
-                window.removeEventListener('mousemove', onMove)
-                window.removeEventListener('mouseup', onUp)
-              }
-              window.addEventListener('mousemove', onMove)
-              window.addEventListener('mouseup', onUp)
-            }}
-          >
-            <span className="w-0.5 h-3 bg-zinc-500 rounded-full" />
-            <span className="w-0.5 h-3 bg-zinc-500 rounded-full" />
-          </div>
-          <div style={{ width: `${100 - editorPct}%` }} className="flex flex-col overflow-hidden">
-            <PDFViewer
-              pdfUrl={pdfUrl}
-              isCompiling={isCompiling}
-              compileError={compileError}
-              onReload={() => compile(latexSource, assets, compiler)}
-            />
-          </div>
+          <Editor value={editorValue} onChange={handleEditorChange} diagnostics={diagnostics} />
         </div>
       </div>
 

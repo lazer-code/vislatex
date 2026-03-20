@@ -172,6 +172,73 @@ function createWindow(): void {
   }
 }
 
+// ── PDF preview window ────────────────────────────────────────────────────────
+
+/** The most recently compiled PDF (base64), so it can be replayed when the
+ *  preview window is (re-)opened after a compile has already happened. */
+let latestPdfBase64: string | null = null
+
+/** Reference to the preview BrowserWindow; null when it is closed. */
+let previewWindow: BrowserWindow | null = null
+
+function createPreviewWindow(): void {
+  if (previewWindow && !previewWindow.isDestroyed()) {
+    previewWindow.focus()
+    return
+  }
+
+  previewWindow = new BrowserWindow({
+    width: 900,
+    height: 1000,
+    minWidth: 400,
+    minHeight: 300,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+    title: 'VisLaTeX – PDF Preview',
+    backgroundColor: '#09090b',
+  })
+
+  // Send the latest PDF (if any) once the window has finished loading so that
+  // re-opening the preview after a compile shows the document immediately.
+  previewWindow.webContents.once('did-finish-load', () => {
+    if (latestPdfBase64 !== null) {
+      previewWindow?.webContents.send('pdf-update', latestPdfBase64)
+    }
+  })
+
+  previewWindow.on('closed', () => {
+    previewWindow = null
+  })
+
+  if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
+    previewWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '?mode=preview')
+  } else {
+    previewWindow.loadFile(join(__dirname, '../renderer/index.html'), {
+      query: { mode: 'preview' },
+    })
+  }
+}
+
+ipcMain.handle('open-preview-window', () => {
+  createPreviewWindow()
+})
+
+/** Receives a compiled PDF from the main renderer and forwards it to the
+ *  preview window, creating the window if it does not exist yet. */
+ipcMain.on('push-pdf', (_event, pdfBase64: string | null) => {
+  latestPdfBase64 = pdfBase64
+  if (!previewWindow || previewWindow.isDestroyed()) {
+    createPreviewWindow()
+    // createPreviewWindow registers a did-finish-load handler that sends
+    // latestPdfBase64, so no extra send is needed here.
+  } else {
+    previewWindow.webContents.send('pdf-update', pdfBase64)
+  }
+})
+
 // ── LaTeX compilation IPC handler ─────────────────────────────────────────────
 
 interface FileEntry {

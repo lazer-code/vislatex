@@ -58,6 +58,13 @@ interface ElectronAPI {
   openDirectory(): Promise<ElectronOpenDirectoryResult | null>
   /** Deletes a file or folder at relativePath inside rootPath on the real filesystem. */
   deletePath(payload: ElectronDeletePathPayload): Promise<ElectronDeletePathResult>
+  /** Opens (or focuses) the PDF preview window. */
+  openPreviewWindow(): Promise<void>
+  /** Sends the latest compiled PDF (base64) to the preview window.  Pass null to clear. */
+  pushPdf(pdfBase64: string | null): void
+  /** Registers a callback invoked whenever a new PDF is pushed to this window.
+   *  Returns a cleanup function that removes the listener. */
+  onPdfUpdate(callback: (pdfBase64: string | null) => void): () => void
 }
 
 declare global {

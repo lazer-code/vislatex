@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import VisLatexApp from './components/VisLatexApp'
+import PreviewApp from './components/PreviewApp'
 import './globals.css'
 
 // Configure Monaco editor workers for Vite bundling
@@ -12,8 +13,13 @@ self.MonacoEnvironment = {
   },
 }
 
+// When the window is opened with ?mode=preview it acts as the detached PDF
+// preview window; otherwise render the full editor application.
+const isPreview = new URLSearchParams(window.location.search).get('mode') === 'preview'
+const App = isPreview ? PreviewApp : VisLatexApp
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <VisLatexApp />
+    <App />
   </React.StrictMode>,
 )

@@ -17,6 +17,8 @@ interface TopBarProps {
   onOpenFolder: () => void
   onSaveFile: () => void
   onSaveFolder: () => void
+  /** Opens (or focuses) the detached PDF preview window. */
+  onOpenPreview: () => void
 }
 
 function SpinnerIcon() {
@@ -59,6 +61,7 @@ export default function TopBar({
   onOpenFolder,
   onSaveFile,
   onSaveFolder,
+  onOpenPreview,
 }: TopBarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -170,6 +173,15 @@ export default function TopBar({
         title={autoCompile ? 'Auto-compile on edit is ON — click to switch to manual' : 'Auto-compile is OFF — click to enable auto-compile on edit'}
       >
         {autoCompile ? '⚡ Auto' : '⚡ Manual'}
+      </button>
+
+      {/* PDF Preview window button */}
+      <button
+        onClick={onOpenPreview}
+        className="shrink-0 text-sm px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:border-cyan-500 hover:text-cyan-400 transition-colors"
+        title="Open PDF preview in a separate window"
+      >
+        🔍 Preview
       </button>
 
       {/* Compile button */}
