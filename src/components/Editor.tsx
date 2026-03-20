@@ -216,7 +216,11 @@ export default function Editor({ value, onChange, diagnostics }: EditorProps) {
           }
         })
         onChangeRef.current(editor.getValue())
+        // Apply synchronously for already-rendered DOM elements, then defer
+        // a second pass so that direction attributes are re-applied after
+        // Monaco finishes its own async re-render of the changed lines.
         applyLineDirections()
+        setTimeout(applyLineDirections, 0)
       })
 
       // Re-apply direction classes whenever Monaco recycles view-line elements

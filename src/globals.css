@@ -54,8 +54,11 @@ body {
  *     direction:rtl !important on the inner span then overrides Monaco's own
  *     dir="ltr" attribute so the Unicode Bidirectional Algorithm uses RTL as the
  *     paragraph base direction, preserving correct word/sentence order for mixed
- *     Hebrew+math lines.  unicode-bidi:isolate on token spans prevents $$
- *     delimiters from drifting to the wrong side of math expressions.
+ *     Hebrew+math lines.  Monaco's own per-span unicode-bidi:isolate (added to
+ *     spans it detects as containing RTL chars) is left intact; our JS
+ *     additionally applies isolate-override+direction:ltr to LaTeX keyword spans
+ *     (e.g. \subsubsection*) to prevent neutral chars like \ and * from
+ *     being reordered as RTL.
  *
  *   data-direction="rtl-cmd"
  *     Lines that start with a LaTeX command but have RTL content inside their
@@ -86,19 +89,6 @@ body {
  * uses RTL as the paragraph base direction. */
 .monaco-editor .view-lines .view-line[data-direction="rtl"] > span {
   direction: rtl !important;
-}
-
-/*
- * Isolate each token span on pure RTL paragraph lines so the bidi algorithm
- * treats every token as an independent unit.  This prevents $$ math delimiters
- * from drifting to the wrong side of an equation.
- *
- * LaTeX keyword tokens (e.g. \subsubsection*) additionally receive
- * unicode-bidi:isolate-override + direction:ltr via Editor.tsx to prevent the
- * neutral '\' and '*' characters from being resolved as RTL.
- */
-.monaco-editor .view-lines .view-line[data-direction="rtl"] > span > span {
-  unicode-bidi: isolate;
 }
 
 /*
