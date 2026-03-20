@@ -66,3 +66,34 @@ export function getLineDirection(text: string): 'rtl' | 'ltr' {
 export function getAlignmentForDirection(dir: 'rtl' | 'ltr'): 'right' | 'left' {
   return dir === 'rtl' ? 'right' : 'left'
 }
+
+/**
+ * Matches a line that starts (after optional whitespace) with a backslash,
+ * indicating a LaTeX command such as \section, \textbf, \begin, etc.
+ */
+const STARTS_WITH_LATEX_CMD_RE = /^[ \t]*\\/
+
+/**
+ * Returns a fine-grained line direction type used to decide both the text
+ * alignment and the paragraph base direction for Monaco view-line elements.
+ *
+ *   'ltr'     – first meaningful character is LTR (or absent).  Render with
+ *               the default LTR paragraph base direction.
+ *
+ *   'rtl'     – first meaningful character is RTL and the line does NOT start
+ *               with a LaTeX command.  Treat as a true RTL paragraph: set
+ *               direction:rtl on the inner span so the Unicode Bidi Algorithm
+ *               places Hebrew/Arabic words and inline LTR content (e.g. math)
+ *               in the correct visual sentence order.
+ *
+ *   'rtl-cmd' – first meaningful character is RTL but the line starts with a
+ *               LaTeX command (e.g. \subsubsection*{Hebrew Introduction}).
+ *               Right-align the line but keep the LTR paragraph base direction
+ *               so the command, braces, and mixed-language content inside the
+ *               braces preserve their logical left-to-right order in the editor.
+ */
+export function getLineDirectionType(text: string): 'ltr' | 'rtl' | 'rtl-cmd' {
+  if (getLineDirection(text) === 'ltr') return 'ltr'
+  // The line has RTL content.  Check whether it opens with a LaTeX command.
+  return STARTS_WITH_LATEX_CMD_RE.test(text) ? 'rtl-cmd' : 'rtl'
+}

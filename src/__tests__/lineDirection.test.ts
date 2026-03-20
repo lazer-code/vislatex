@@ -2,6 +2,7 @@ import {
   getFirstMeaningfulChar,
   getLineDirection,
   getAlignmentForDirection,
+  getLineDirectionType,
 } from '@/utils/lineDirection'
 
 describe('getFirstMeaningfulChar', () => {
