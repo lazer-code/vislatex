@@ -17,6 +17,8 @@ interface TopBarProps {
   onOpenFolder: () => void
   onSaveFile: () => void
   onSaveFolder: () => void
+  /** Loads a ready-made RTL (Hebrew/Arabic + math) document template. */
+  onLoadRtlTemplate: () => void
 }
 
 function SpinnerIcon() {
@@ -59,6 +61,7 @@ export default function TopBar({
   onOpenFolder,
   onSaveFile,
   onSaveFolder,
+  onLoadRtlTemplate,
 }: TopBarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -121,6 +124,15 @@ export default function TopBar({
         title="Open a project folder"
       >
         📂 Open Folder
+      </button>
+
+      {/* RTL template button */}
+      <button
+        onClick={onLoadRtlTemplate}
+        className="shrink-0 text-sm px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:border-cyan-500 hover:text-cyan-400 transition-colors"
+        title="Load a Hebrew/RTL + math template (XeLaTeX + polyglossia)"
+      >
+        🔤 RTL Template
       </button>
 
       {/* Save File button */}

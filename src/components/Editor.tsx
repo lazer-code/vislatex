@@ -497,8 +497,9 @@ export default function Editor({ value, onChange, diagnostics }: EditorProps) {
 
       // Initial scan so existing content is aligned on load.
       scanAllLines()
-      // Apply after a short delay to let Monaco finish the first render.
-      setTimeout(applyLineDirections, 0)
+      // Monaco's first DOM render is deferred; use a double rAF so that we
+      // always run *after* Monaco's own requestAnimationFrame render pass.
+      requestAnimationFrame(() => requestAnimationFrame(applyLineDirections))
 
       // Re-apply when the cursor moves to a DIFFERENT line.
       let lastCursorLine = -1
@@ -507,10 +508,12 @@ export default function Editor({ value, onChange, diagnostics }: EditorProps) {
         if (line === lastCursorLine) return
         lastCursorLine = line
         updateLine(line)
-        applyLineDirections()
+        requestAnimationFrame(applyLineDirections)
       })
 
       // Re-apply when content changes (handles typing, paste, etc.).
+      // Use requestAnimationFrame so we always run *after* Monaco has updated
+      // the view-line DOM elements for the new content.
       editor.onDidChangeModelContent((e) => {
         e.changes.forEach((change) => {
           const start = change.range.startLineNumber
@@ -528,11 +531,12 @@ export default function Editor({ value, onChange, diagnostics }: EditorProps) {
           }
         })
         onChangeRef.current(editor.getValue())
-        applyLineDirections()
+        requestAnimationFrame(applyLineDirections)
       })
 
       // Re-apply direction classes whenever Monaco recycles view-line elements
-      // (scroll, resize, etc.).
+      // (scroll, resize, etc.).  These events already fire after the DOM
+      // update, so a direct call is sufficient.
       editor.onDidScrollChange(applyLineDirections)
       editor.onDidLayoutChange(applyLineDirections)
       // -----------------------------------
