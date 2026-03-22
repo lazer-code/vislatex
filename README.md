@@ -14,7 +14,8 @@ A modern, real-time LaTeX editor and previewer built as a **Windows desktop appl
 - 🔒 **Sandboxed compilation** — `-no-shell-escape` prevents code execution
 - 🌐 **XeLaTeX** support for Unicode, Hebrew, and multilingual documents
 - ⬇️ **Download PDF** directly from the app
-- 🔤 **Auto line alignment** — RTL script lines (Hebrew, Arabic) are right-aligned automatically
+- 🔤 **Auto line alignment** — RTL script lines (Hebrew, Arabic) are right-aligned automatically; mixed RTL+math lines render in correct visual order without character jumping
+- 🌐 **Mixed LTR/RTL support** — type Hebrew then math in source order; the PDF places math correctly to the left in RTL context; works in paragraphs and inside `\section{}`/`\subsection{}` titles
 - 📁 **Multi-file workspace** — open a folder and work on a complete LaTeX project
 
 ## Prerequisites
@@ -83,9 +84,29 @@ This produces an NSIS installer (`.exe`) and a portable executable inside the `r
 8. Uploaded assets appear in the **asset bar** — click **×** to remove individual files
 9. Click **Download PDF** to save the compiled PDF
 
-## Writing Hebrew (RTL) with XeLaTeX
+## Writing Hebrew / RTL with XeLaTeX
 
-Switch to **XeLaTeX** using the compiler dropdown, then use `polyglossia` and `bidi` for RTL support. Ensure you have the required fonts installed (e.g., FreeSerif from `fonts-freefont-otf`).
+Switch to **XeLaTeX** using the compiler dropdown (or click **🔤 RTL Template** in the toolbar for a
+ready-made setup), then use `polyglossia` for RTL support.  Ensure you have the required fonts
+installed (e.g. FreeSerif from `fonts-freefont-otf`).
+
+### Quick start — 🔤 RTL Template button
+
+Click **🔤 RTL Template** in the top bar.  The editor loads a complete Hebrew + math template and
+switches the compiler to XeLaTeX automatically.  Just hit **Compile ▶** to see the result.
+
+### How mixed LTR/RTL works
+
+With `polyglossia` and `\setmainlanguage{hebrew}`:
+
+| You type in source | PDF renders as |
+|--------------------|----------------|
+| `היי $\frac{1}{2}$` | `[fraction]  [היי]` (fraction to the **left** of the Hebrew word) |
+| `\section{היי $\frac{1}{2}$}` | Section title with fraction to the **left** |
+
+The source stays in the **natural typed order** — no special wrapping required.  The `bidi` engine
+(bundled in `polyglossia`) handles the visual reordering for the PDF automatically based on the
+first strong character in each paragraph or heading.
 
 ### Editor auto-alignment
 
@@ -94,6 +115,11 @@ The editor automatically detects the dominant direction of each line:
 - Lines whose **first meaningful character** is Hebrew or Arabic are **right-aligned**.
 - All other lines are **left-aligned**.
 - Leading whitespace, list markers (`-`, `*`, `•`), and numbered prefixes are skipped.
+- LaTeX command prefixes such as `\section{`, `\subsection*{`, `\textbf{` are also stripped, so
+  `\section{Hebrew text}` is correctly aligned right.
+- Mixed lines (RTL text followed by Latin math) are also aligned right, and the browser's Unicode
+  Bidirectional Algorithm renders the LTR math run in the correct visual position within the line —
+  no character jumping.
 
 ### Minimal Hebrew example
 
@@ -109,11 +135,43 @@ The editor automatically detects the dominant direction of each line:
 
 \begin{document}
 
+% Typing in source order → PDF shows fraction to the LEFT of the Hebrew word:
+היי $\frac{1}{2}$ --- השבר מוצג משמאל לטקסט העברי.
+
 \textlatin{Hello} --- שלום עולם
 
 \textlatin{Math works too:} $E = mc^2$
 
 \end{document}
+```
+
+### Section titles with mixed content
+
+```latex
+\section{היי $\frac{1}{2}$}
+\subsection{כותרת עם מתמטיקה $x^2 + y^2 = r^2$}
+```
+
+Both compile correctly with `polyglossia`.  The editor right-aligns these lines because it strips
+the `\section{` / `\subsection{` prefix when detecting the first meaningful character.
+
+### Programmatic bidi helpers
+
+The `src/utils/bidiLatex.ts` module exposes utilities for bidi-aware tooling:
+
+```typescript
+import { hasMixedBidi, documentNeedsBidi, buildBidiPreamble, RTL_LATEX_TEMPLATE }
+  from '@/utils/bidiLatex'
+
+hasMixedBidi('היי $\\frac{1}{2}$')   // true  — has both RTL and LTR characters
+documentNeedsBidi(source)             // true  — source contains RTL characters
+
+buildBidiPreamble()
+// → \usepackage{fontspec}
+//   \usepackage{polyglossia}
+//   \setmainlanguage{hebrew}
+//   \setotherlanguage{english}
+//   \newfontfamily\hebrewfont{FreeSerif}
 ```
 
 ## Using Images

@@ -2,6 +2,7 @@ import {
   getFirstMeaningfulChar,
   getLineDirection,
   getAlignmentForDirection,
+  containsRtl,
 } from '@/utils/lineDirection'
 
 describe('getFirstMeaningfulChar', () => {
@@ -142,5 +143,39 @@ describe('getAlignmentForDirection', () => {
 
   it('returns "left" for "ltr"', () => {
     expect(getAlignmentForDirection('ltr')).toBe('left')
+  })
+})
+
+describe('containsRtl', () => {
+  it('returns false for an empty string', () => {
+    expect(containsRtl('')).toBe(false)
+  })
+
+  it('returns false for a plain English string', () => {
+    expect(containsRtl('Hello world')).toBe(false)
+  })
+
+  it('returns true for a string starting with Hebrew', () => {
+    expect(containsRtl('שלום')).toBe(true)
+  })
+
+  it('returns true for a string with Hebrew in the middle', () => {
+    expect(containsRtl('Hello שלום world')).toBe(true)
+  })
+
+  it('returns true for a LaTeX command with Hebrew content', () => {
+    expect(containsRtl('\\section{שלום}')).toBe(true)
+  })
+
+  it('returns false for LaTeX commands without RTL characters', () => {
+    expect(containsRtl('\\documentclass{article}')).toBe(false)
+  })
+
+  it('returns true for Arabic text', () => {
+    expect(containsRtl('\u0627\u0644\u0639\u0631\u0628\u064A\u0629')).toBe(true)
+  })
+
+  it('returns true for a mixed line with RTL at the end', () => {
+    expect(containsRtl('$\\frac{1}{2}$ היי')).toBe(true)
   })
 })

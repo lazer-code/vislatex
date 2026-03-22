@@ -9,6 +9,7 @@ import FileExplorer from './FileExplorer'
 import MiKTeXWarningModal from './MiKTeXWarningModal'
 import { WorkspaceState, WorkspaceFile, isTextFile } from '../types/workspace'
 import { computeEditorPct, computeSidebarWidth } from '../utils/splitterResize'
+import { RTL_LATEX_TEMPLATE } from '../utils/bidiLatex'
 
 // Minimal local types for the File System Access API (not yet in @types/lib)
 interface FSFileHandle {
@@ -870,6 +871,10 @@ export default function VisLatexApp() {
         onOpenFolder={handleOpenFolder}
         onSaveFile={handleSaveFile}
         onSaveFolder={handleSaveFolder}
+        onLoadRtlTemplate={() => {
+          setLatexSource(RTL_LATEX_TEMPLATE)
+          setCompiler('xelatex')
+        }}
       />
 
       {/* Hidden folder input for webkitdirectory fallback */}

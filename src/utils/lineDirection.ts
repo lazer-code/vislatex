@@ -11,7 +11,7 @@
  *   Hebrew Presentation: U+FB1D–U+FB4F
  *   Arabic Presentation: U+FB50–U+FDFF, U+FE70–U+FEFF
  */
-const RTL_CHAR_RE =
+export const RTL_CHAR_RE =
   /[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/
 
 /**
@@ -61,4 +61,14 @@ export function getLineDirection(text: string): 'rtl' | 'ltr' {
  */
 export function getAlignmentForDirection(dir: 'rtl' | 'ltr'): 'right' | 'left' {
   return dir === 'rtl' ? 'right' : 'left'
+}
+
+/**
+ * Returns true if the text contains at least one RTL character anywhere
+ * (Hebrew or Arabic).  Unlike getLineDirection, this scans the entire string
+ * rather than only the first meaningful character, making it suitable for
+ * detecting mixed-direction documents or paragraphs.
+ */
+export function containsRtl(text: string): boolean {
+  return RTL_CHAR_RE.test(text)
 }
