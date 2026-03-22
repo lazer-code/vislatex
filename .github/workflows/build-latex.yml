@@ -1,0 +1,86 @@
+name: Build LaTeX
+
+on:
+  push:
+    paths:
+      - "**/*.tex"
+      - ".github/workflows/build-latex.yml"
+  pull_request:
+    paths:
+      - "**/*.tex"
+      - ".github/workflows/build-latex.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install TeX Live (XeLaTeX + pdfLaTeX)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            texlive-xetex \
+            texlive-fonts-recommended \
+            texlive-fonts-extra \
+            texlive-latex-extra \
+            texlive-lang-other \
+            fonts-freefont-otf
+
+      - name: Compile .tex files
+        run: |
+          set -e
+          shopt -s globstar nullglob
+          tex_files=( **/*.tex )
+          if [ ${#tex_files[@]} -eq 0 ]; then
+            echo "No .tex files found. Nothing to compile."
+            exit 0
+          fi
+          mkdir -p pdf-output
+          for tex_file in "${tex_files[@]}"; do
+            # Skip files inside node_modules or other tooling directories
+            if [[ "$tex_file" == node_modules/* ]] || [[ "$tex_file" == out/* ]] || [[ "$tex_file" == release/* ]]; then
+              continue
+            fi
+            dir=$(dirname "$tex_file")
+            base=$(basename "$tex_file" .tex)
+            echo "------------------------------------------------------------"
+            echo "Compiling: $tex_file"
+            echo "------------------------------------------------------------"
+            # Determine which compiler to use (XeLaTeX preferred, pdfLaTeX as fallback)
+            compiler=""
+            echo "Trying XeLaTeX..."
+            if xelatex -interaction=nonstopmode -halt-on-error -no-shell-escape \
+              -output-directory="$dir" "$tex_file"; then
+              compiler="xelatex"
+              echo "✔ XeLaTeX succeeded (pass 1)"
+            else
+              echo "XeLaTeX failed, falling back to pdfLaTeX..."
+              pdflatex -interaction=nonstopmode -halt-on-error -no-shell-escape \
+                -output-directory="$dir" "$tex_file"
+              compiler="pdflatex"
+              echo "✔ pdfLaTeX succeeded (pass 1)"
+            fi
+            # Second pass with the same compiler to resolve cross-references and TOC
+            echo "Running $compiler (pass 2) to resolve cross-references..."
+            "$compiler" -interaction=nonstopmode -halt-on-error -no-shell-escape \
+              -output-directory="$dir" "$tex_file"
+            echo "✔ $compiler succeeded (pass 2)"
+            # Collect the PDF
+            if [ -f "$dir/$base.pdf" ]; then
+              cp "$dir/$base.pdf" "pdf-output/$base.pdf"
+              echo "✔ PDF saved: pdf-output/$base.pdf"
+            fi
+          done
+
+      - name: Upload PDF artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-pdfs
+          path: pdf-output/
+          if-no-files-found: warn
