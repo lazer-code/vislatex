@@ -73,6 +73,27 @@ describe('getFirstMeaningfulChar', () => {
   it('skips a LaTeX command prefix \\section{ and returns the English character', () => {
     expect(getFirstMeaningfulChar('\\section{Introduction}')).toBe('I')
   })
+
+  it('skips \\textcolor{color}{ and returns Hebrew from the content', () => {
+    expect(getFirstMeaningfulChar('\\textcolor{RoyalBlue}{שלום}')).toBe('ש')
+  })
+
+  it('skips \\textcolor{color}{ and returns English from the content', () => {
+    expect(getFirstMeaningfulChar('\\textcolor{RoyalBlue}{hello}')).toBe('h')
+  })
+
+  it('skips \\colorbox{color}{ and returns Hebrew from the content', () => {
+    expect(getFirstMeaningfulChar('\\colorbox{yellow}{שלום}')).toBe('ש')
+  })
+
+  it('skips \\colorbox{color}{\\textbf{ and returns Hebrew', () => {
+    expect(getFirstMeaningfulChar('\\colorbox{yellow}{\\textbf{שלום}}')).toBe('ש')
+  })
+
+  it('does not skip a Hebrew color name (stops at RTL char inside brace)', () => {
+    // \textcolor{כחול}{...} — first char inside outer { is Hebrew
+    expect(getFirstMeaningfulChar('\\textcolor{כחול}{hello}')).toBe('כ')
+  })
 })
 
 describe('getLineDirection', () => {
@@ -133,6 +154,22 @@ describe('getLineDirection', () => {
   it('returns "rtl" for an Arabic line', () => {
     // Arabic letter 'alef' U+0627
     expect(getLineDirection('\u0627\u0644\u0639\u0631\u0628\u064A\u0629')).toBe('rtl')
+  })
+
+  it('returns "rtl" for \\textcolor{color}{Hebrew text} (two-arg command)', () => {
+    expect(getLineDirection('\\textcolor{RoyalBlue}{נשים לב שתמיד נכון}')).toBe('rtl')
+  })
+
+  it('returns "ltr" for \\textcolor{color}{math} (content is LTR)', () => {
+    expect(getLineDirection('\\textcolor{RoyalBlue}{$-3 \\le x$}')).toBe('ltr')
+  })
+
+  it('returns "rtl" for \\colorbox{color}{Hebrew text}', () => {
+    expect(getLineDirection('\\colorbox{yellow}{שלום עולם}')).toBe('rtl')
+  })
+
+  it('returns "rtl" for nested \\textcolor{color}{\\textbf{Hebrew}}', () => {
+    expect(getLineDirection('\\textcolor{RoyalBlue}{\\textbf{נשים לב}}')).toBe('rtl')
   })
 })
 

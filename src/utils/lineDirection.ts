@@ -23,26 +23,41 @@ export const RTL_CHAR_RE =
 const LEADING_NOISE_RE = /^[\s\-*•\u2022\u2023\u25AA\u25CF]*(?:\d+[.)]\s*|[a-zA-Z][.)]\s*)*/
 
 /**
- * Strips one or more consecutive LaTeX commands of the form \cmd{ or \cmd*{
- * (including any trailing whitespace) so that the content inside the braces
- * is exposed for direction detection.  Only the opening sequences are stripped;
- * closing braces remain in the result but do not affect direction detection.
- * For example:
- *   \subsection*{א. ...}    →  א. ...}
- *   \textbf{\textit{שלום}}  →  שלום}}
+ * Strips one or more consecutive LaTeX command prefixes so that the actual
+ * text content is exposed for direction detection.
+ *
+ * Two patterns are handled per command occurrence:
+ *   1. \cmd{          – simple single-argument opening: \textbf{, \section{
+ *   2. \cmd{nonRTL}{  – command whose leading brace groups contain only
+ *                       non-RTL characters, e.g. \textcolor{RoyalBlue}{text}
+ *                       or \colorbox{yellow}{text}.
+ *
+ * The inner non-RTL brace groups are identified by the negated RTL character
+ * class [^}\u0590-…\uFEFF].  This guarantees that a color name like
+ * "RoyalBlue" is skipped while a Hebrew color name like "כחול" is NOT skipped
+ * (stopping so the Hebrew character is seen as the meaningful first char).
+ *
+ * Examples:
+ *   \subsection*{א. ...}               →  א. ...}
+ *   \textbf{\textit{שלום}}             →  שלום}}
+ *   \textcolor{RoyalBlue}{שלום}        →  שלום}
+ *   \textcolor{RoyalBlue}{$x \le 0$}   →  $x \le 0$}
+ *   \colorbox{yellow}{\textbf{שלום}}   →  שלום}}
  */
-const LEADING_LATEX_CMD_RE = /^(?:\\[a-zA-Z]+\*?\{)+\s*/
+const LEADING_LATEX_CMD_RE =
+  /^(?:\\[a-zA-Z]+\*?(?:\{[^}\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]*\})*\{)+\s*/
 
 /**
  * Returns the first character that carries meaningful directional information,
  * skipping leading whitespace, punctuation, common list markers, and LaTeX
- * command prefixes such as \subsection*{ or \textbf{.
+ * command prefixes such as \subsection*{, \textbf{, or \textcolor{RoyalBlue}{.
  */
 export function getFirstMeaningfulChar(text: string): string | null {
   // Strip whitespace, bullets, and numbered/lettered list prefixes.
   let stripped = text.replace(LEADING_NOISE_RE, '')
-  // Strip a leading LaTeX command with braces (e.g. \subsection*{) so that
-  // \subsection*{Hebrew text} correctly yields the Hebrew character.
+  // Strip a leading LaTeX command with optional non-RTL argument groups
+  // (e.g. \textcolor{RoyalBlue}{) so that \textcolor{RoyalBlue}{Hebrew text}
+  // correctly yields the Hebrew character rather than 'R' from the color name.
   stripped = stripped.replace(LEADING_LATEX_CMD_RE, '')
   return stripped.length > 0 ? stripped[0] : null
 }
