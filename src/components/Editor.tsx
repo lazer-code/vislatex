@@ -58,6 +58,344 @@ export default function Editor({ value, onChange, diagnostics }: EditorProps) {
         },
       })
 
+      // --- LaTeX completion provider ---
+      monacoInstance.languages.registerCompletionItemProvider('latex', {
+        triggerCharacters: ['\\'],
+        provideCompletionItems(model, position) {
+          const linePrefix = model.getValueInRange({
+            startLineNumber: position.lineNumber,
+            startColumn: 1,
+            endLineNumber: position.lineNumber,
+            endColumn: position.column,
+          })
+          const backslashIdx = linePrefix.lastIndexOf('\\')
+          if (backslashIdx === -1) return { suggestions: [] }
+
+          // Replace from the '\' character up to the current cursor position.
+          const range = {
+            startLineNumber: position.lineNumber,
+            endLineNumber: position.lineNumber,
+            startColumn: backslashIdx + 1, // 1-based column of '\'
+            endColumn: position.column,
+          }
+
+          const Snippet =
+            monacoInstance.languages.CompletionItemInsertTextRule.InsertAsSnippet
+          const Kind = monacoInstance.languages.CompletionItemKind
+
+          /** Build a \begin{env}…\end{env} snippet. */
+          const envSnippet = (env: string, body = '\t$1') =>
+            `\\begin{${env}}\n${body}\n\\end{${env}}$0`
+
+          return {
+            suggestions: [
+              // ── Environments ────────────────────────────────────────────
+              {
+                label: '\\begin{enumerate}',
+                kind: Kind.Snippet,
+                insertText: envSnippet('enumerate', '\t\\item $1'),
+                insertTextRules: Snippet,
+                documentation: 'Numbered list environment',
+                range,
+              },
+              {
+                label: '\\begin{itemize}',
+                kind: Kind.Snippet,
+                insertText: envSnippet('itemize', '\t\\item $1'),
+                insertTextRules: Snippet,
+                documentation: 'Bullet list environment',
+                range,
+              },
+              {
+                label: '\\begin{figure}',
+                kind: Kind.Snippet,
+                insertText: envSnippet(
+                  'figure',
+                  '\t\\centering\n\t\\includegraphics[width=\\linewidth]{$1}\n\t\\caption{$2}\n\t\\label{fig:$3}',
+                ),
+                insertTextRules: Snippet,
+                documentation: 'Figure environment',
+                range,
+              },
+              {
+                label: '\\begin{table}',
+                kind: Kind.Snippet,
+                insertText: envSnippet(
+                  'table',
+                  '\t\\centering\n\t\\begin{tabular}{$1}\n\t\t$2\n\t\\end{tabular}\n\t\\caption{$3}\n\t\\label{tab:$4}',
+                ),
+                insertTextRules: Snippet,
+                documentation: 'Table environment',
+                range,
+              },
+              {
+                label: '\\begin{tabular}',
+                kind: Kind.Snippet,
+                insertText: '\\begin{tabular}{$1}\n\t$2\n\\end{tabular}$0',
+                insertTextRules: Snippet,
+                documentation: 'Tabular environment',
+                range,
+              },
+              {
+                label: '\\begin{equation}',
+                kind: Kind.Snippet,
+                insertText: envSnippet('equation', '\t$1'),
+                insertTextRules: Snippet,
+                documentation: 'Numbered equation',
+                range,
+              },
+              {
+                label: '\\begin{align}',
+                kind: Kind.Snippet,
+                insertText: envSnippet('align', '\t$1 &= $2 \\\\'),
+                insertTextRules: Snippet,
+                documentation: 'Aligned equations',
+                range,
+              },
+              {
+                label: '\\begin{document}',
+                kind: Kind.Snippet,
+                insertText: envSnippet('document', '$1'),
+                insertTextRules: Snippet,
+                documentation: 'Document environment',
+                range,
+              },
+              {
+                label: '\\begin{abstract}',
+                kind: Kind.Snippet,
+                insertText: envSnippet('abstract', '$1'),
+                insertTextRules: Snippet,
+                documentation: 'Abstract environment',
+                range,
+              },
+              {
+                label: '\\begin{verbatim}',
+                kind: Kind.Snippet,
+                insertText: envSnippet('verbatim', '$1'),
+                insertTextRules: Snippet,
+                documentation: 'Verbatim text',
+                range,
+              },
+              {
+                label: '\\begin{center}',
+                kind: Kind.Snippet,
+                insertText: envSnippet('center', '\t$1'),
+                insertTextRules: Snippet,
+                documentation: 'Centered content',
+                range,
+              },
+              // ── Math commands ──────────────────────────────────────────
+              {
+                label: '\\frac',
+                kind: Kind.Snippet,
+                insertText: '\\frac{$1}{$2}$0',
+                insertTextRules: Snippet,
+                documentation: 'Fraction: \\frac{numerator}{denominator}',
+                range,
+              },
+              {
+                label: '\\sqrt',
+                kind: Kind.Snippet,
+                insertText: '\\sqrt{$1}$0',
+                insertTextRules: Snippet,
+                documentation: 'Square root',
+                range,
+              },
+              {
+                label: '\\sum',
+                kind: Kind.Snippet,
+                insertText: '\\sum_{$1}^{$2}$0',
+                insertTextRules: Snippet,
+                documentation: 'Summation',
+                range,
+              },
+              {
+                label: '\\int',
+                kind: Kind.Snippet,
+                insertText: '\\int_{$1}^{$2}$0',
+                insertTextRules: Snippet,
+                documentation: 'Integral',
+                range,
+              },
+              {
+                label: '\\lim',
+                kind: Kind.Snippet,
+                insertText: '\\lim_{$1}$0',
+                insertTextRules: Snippet,
+                documentation: 'Limit',
+                range,
+              },
+              // ── Text formatting ────────────────────────────────────────
+              {
+                label: '\\textbf',
+                kind: Kind.Snippet,
+                insertText: '\\textbf{$1}$0',
+                insertTextRules: Snippet,
+                documentation: 'Bold text',
+                range,
+              },
+              {
+                label: '\\textit',
+                kind: Kind.Snippet,
+                insertText: '\\textit{$1}$0',
+                insertTextRules: Snippet,
+                documentation: 'Italic text',
+                range,
+              },
+              {
+                label: '\\underline',
+                kind: Kind.Snippet,
+                insertText: '\\underline{$1}$0',
+                insertTextRules: Snippet,
+                documentation: 'Underlined text',
+                range,
+              },
+              {
+                label: '\\emph',
+                kind: Kind.Snippet,
+                insertText: '\\emph{$1}$0',
+                insertTextRules: Snippet,
+                documentation: 'Emphasized text',
+                range,
+              },
+              {
+                label: '\\texttt',
+                kind: Kind.Snippet,
+                insertText: '\\texttt{$1}$0',
+                insertTextRules: Snippet,
+                documentation: 'Typewriter (monospace) text',
+                range,
+              },
+              // ── Sectioning ─────────────────────────────────────────────
+              {
+                label: '\\section',
+                kind: Kind.Snippet,
+                insertText: '\\section{$1}$0',
+                insertTextRules: Snippet,
+                documentation: 'Section',
+                range,
+              },
+              {
+                label: '\\subsection',
+                kind: Kind.Snippet,
+                insertText: '\\subsection{$1}$0',
+                insertTextRules: Snippet,
+                documentation: 'Subsection',
+                range,
+              },
+              {
+                label: '\\subsubsection',
+                kind: Kind.Snippet,
+                insertText: '\\subsubsection{$1}$0',
+                insertTextRules: Snippet,
+                documentation: 'Subsubsection',
+                range,
+              },
+              // ── Cross-references ───────────────────────────────────────
+              {
+                label: '\\caption',
+                kind: Kind.Snippet,
+                insertText: '\\caption{$1}$0',
+                insertTextRules: Snippet,
+                documentation: 'Caption',
+                range,
+              },
+              {
+                label: '\\label',
+                kind: Kind.Snippet,
+                insertText: '\\label{$1}$0',
+                insertTextRules: Snippet,
+                documentation: 'Label',
+                range,
+              },
+              {
+                label: '\\ref',
+                kind: Kind.Snippet,
+                insertText: '\\ref{$1}$0',
+                insertTextRules: Snippet,
+                documentation: 'Reference',
+                range,
+              },
+              {
+                label: '\\cite',
+                kind: Kind.Snippet,
+                insertText: '\\cite{$1}$0',
+                insertTextRules: Snippet,
+                documentation: 'Citation',
+                range,
+              },
+              // ── Preamble ───────────────────────────────────────────────
+              {
+                label: '\\usepackage',
+                kind: Kind.Snippet,
+                insertText: '\\usepackage{$1}$0',
+                insertTextRules: Snippet,
+                documentation: 'Use package',
+                range,
+              },
+              {
+                label: '\\documentclass',
+                kind: Kind.Snippet,
+                insertText: '\\documentclass[$1]{$2}$0',
+                insertTextRules: Snippet,
+                documentation: 'Document class',
+                range,
+              },
+              {
+                label: '\\includegraphics',
+                kind: Kind.Snippet,
+                insertText: '\\includegraphics[width=$1\\linewidth]{$2}$0',
+                insertTextRules: Snippet,
+                documentation: 'Include graphics',
+                range,
+              },
+              // ── Common keywords ────────────────────────────────────────
+              {
+                label: '\\item',
+                kind: Kind.Keyword,
+                insertText: '\\item $1',
+                insertTextRules: Snippet,
+                documentation: 'List item',
+                range,
+              },
+              {
+                label: '\\newline',
+                kind: Kind.Keyword,
+                insertText: '\\newline',
+                insertTextRules: Snippet,
+                documentation: 'New line',
+                range,
+              },
+              {
+                label: '\\noindent',
+                kind: Kind.Keyword,
+                insertText: '\\noindent',
+                insertTextRules: Snippet,
+                documentation: 'No paragraph indent',
+                range,
+              },
+              {
+                label: '\\maketitle',
+                kind: Kind.Keyword,
+                insertText: '\\maketitle',
+                insertTextRules: Snippet,
+                documentation: 'Generate title',
+                range,
+              },
+              {
+                label: '\\tableofcontents',
+                kind: Kind.Keyword,
+                insertText: '\\tableofcontents',
+                insertTextRules: Snippet,
+                documentation: 'Table of contents',
+                range,
+              },
+            ],
+          }
+        },
+      })
+      // ---------------------------------
+
       monacoInstance.editor.defineTheme('latex-dark', {
         base: 'vs-dark',
         inherit: true,
