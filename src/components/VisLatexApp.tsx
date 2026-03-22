@@ -914,11 +914,15 @@ export default function VisLatexApp() {
                 document.body.style.userSelect = 'none'
                 const startX = e.clientX
                 const startW = sidebarWidth
+                let hasDragged = false
                 const onMove = (mv: MouseEvent) => {
+                  if (!hasDragged && Math.abs(mv.clientX - startX) < 4) return
+                  hasDragged = true
                   setSidebarWidth(computeSidebarWidth(startW, startX, mv.clientX))
                 }
                 const onUp = () => {
                   document.body.style.userSelect = ''
+                  if (!hasDragged) setSidebarWidth(startW)
                   window.removeEventListener('mousemove', onMove)
                   window.removeEventListener('mouseup', onUp)
                 }
@@ -949,11 +953,15 @@ export default function VisLatexApp() {
               const startX = e.clientX
               const startPct = editorPct
               const totalW = rect.width - (workspace ? sidebarWidth + 4 : 0) - 4
+              let hasDragged = false
               const onMove = (mv: MouseEvent) => {
+                if (!hasDragged && Math.abs(mv.clientX - startX) < 4) return
+                hasDragged = true
                 setEditorPct(computeEditorPct(startPct, startX, mv.clientX, totalW))
               }
               const onUp = () => {
                 document.body.style.userSelect = ''
+                if (!hasDragged) setEditorPct(startPct)
                 window.removeEventListener('mousemove', onMove)
                 window.removeEventListener('mouseup', onUp)
               }

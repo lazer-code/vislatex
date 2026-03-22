@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { WorkspaceFile, WorkspaceFolderNode, WorkspaceNode, buildTree } from '../types/workspace'
 
 interface FileExplorerProps {
@@ -29,6 +29,38 @@ function fileIcon(name: string): string {
   if (ext === 'pdf') return '📑'
   if (['txt', 'md'].includes(ext)) return '📝'
   return '📎'
+}
+
+// ─── Icons ──────────────────────────────────────────────────────────────────
+
+/** File-plus icon (heroicons mini) */
+function IconFilePlus({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h6.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 1 .439 1.061V15.5A1.5 1.5 0 0 1 13.5 17h-9A1.5 1.5 0 0 1 3 15.5v-12ZM10 6a.75.75 0 0 1 .75.75v2.5h2.5a.75.75 0 0 1 0 1.5h-2.5v2.5a.75.75 0 0 1-1.5 0v-2.5h-2.5a.75.75 0 0 1 0-1.5h2.5v-2.5A.75.75 0 0 1 10 6Z" />
+    </svg>
+  )
+}
+
+/** Folder-plus icon (heroicons mini) */
+function IconFolderPlus({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M3.75 3A1.75 1.75 0 0 0 2 4.75v10.5C2 16.216 2.784 17 3.75 17h12.5A1.75 1.75 0 0 0 18 15.25v-8.5A1.75 1.75 0 0 0 16.25 5h-4.836a.25.25 0 0 1-.177-.073L9.823 3.513A1.75 1.75 0 0 0 8.586 3H3.75ZM10 8a.75.75 0 0 1 .75.75v1.5h1.5a.75.75 0 0 1 0 1.5h-1.5v1.5a.75.75 0 0 1-1.5 0v-1.5h-1.5a.75.75 0 0 1 0-1.5h1.5v-1.5A.75.75 0 0 1 10 8Z" />
+    </svg>
+  )
 }
 
 // ─── CreateInput ────────────────────────────────────────────────────────────
@@ -84,6 +116,8 @@ interface TreeNodeProps {
   activeFilePath: string | null
   mainTexPath: string | null
   pendingCreate: PendingCreate | null
+  selectedPath: string | null
+  renamingPath: string | null
   onFileClick: (path: string) => void
   onRename: (path: string, newName: string, type: 'file' | 'folder') => void
   onDelete: (path: string, type: 'file' | 'folder') => void | Promise<void>
@@ -92,6 +126,8 @@ interface TreeNodeProps {
   onNewFolder: (folderPath: string) => void
   onCreateConfirm: (name: string) => void
   onCreateCancel: () => void
+  onSelect: (path: string, type: 'file' | 'folder') => void
+  onRenamingDone: () => void
 }
 
 function TreeNode({
@@ -100,6 +136,8 @@ function TreeNode({
   activeFilePath,
   mainTexPath,
   pendingCreate,
+  selectedPath,
+  renamingPath,
   onFileClick,
   onRename,
   onDelete,
@@ -108,6 +146,8 @@ function TreeNode({
   onNewFolder,
   onCreateConfirm,
   onCreateCancel,
+  onSelect,
+  onRenamingDone,
 }: TreeNodeProps) {
   const [expanded, setExpanded] = useState(true)
   const [isRenaming, setIsRenaming] = useState(false)
@@ -121,12 +161,21 @@ function TreeNode({
     }
   }, [isRenaming])
 
+  // Trigger rename from external source (e.g. F2 key)
+  useEffect(() => {
+    if (renamingPath === node.path) {
+      setIsRenaming(true)
+      setRenameValue(node.name)
+    }
+  }, [renamingPath, node.path, node.name])
+
   const handleRenameSubmit = () => {
     const trimmed = renameValue.trim()
     if (trimmed && trimmed !== node.name) {
       onRename(node.path, trimmed, node.type)
     }
     setIsRenaming(false)
+    onRenamingDone()
   }
 
   const indent = depth * 12
@@ -135,13 +184,19 @@ function TreeNode({
     const folder = node as WorkspaceFolderNode
     const showPendingCreate =
       pendingCreate !== null && pendingCreate.parentPath === folder.path
+    const isSelected = selectedPath === folder.path
 
     return (
       <div>
         <div
-          className="group flex items-center gap-1 px-2 py-0.5 hover:bg-zinc-800 cursor-pointer select-none rounded mx-1"
+          className={`group flex items-center gap-1 px-2 py-0.5 cursor-pointer select-none rounded mx-1 ${
+            isSelected ? 'bg-zinc-700' : 'hover:bg-zinc-800'
+          }`}
           style={{ paddingLeft: `${8 + indent}px` }}
-          onClick={() => setExpanded((v) => !v)}
+          onClick={() => {
+            setExpanded((v) => !v)
+            onSelect(folder.path, 'folder')
+          }}
         >
           <span className="text-zinc-500 text-xs w-3 flex-shrink-0">
             {expanded ? '▾' : '▸'}
@@ -155,7 +210,10 @@ function TreeNode({
               onBlur={handleRenameSubmit}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleRenameSubmit()
-                if (e.key === 'Escape') setIsRenaming(false)
+                if (e.key === 'Escape') {
+                  setIsRenaming(false)
+                  onRenamingDone()
+                }
                 e.stopPropagation()
               }}
               onClick={(e) => e.stopPropagation()}
@@ -173,20 +231,20 @@ function TreeNode({
                   e.stopPropagation()
                   onNewFile(folder.path)
                 }}
-                className="text-zinc-500 hover:text-cyan-400 text-xs px-0.5 leading-none"
+                className="text-zinc-500 hover:text-cyan-400 px-0.5 leading-none"
                 title="New File in folder"
               >
-                +f
+                <IconFilePlus className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation()
                   onNewFolder(folder.path)
                 }}
-                className="text-zinc-500 hover:text-cyan-400 text-xs px-0.5 leading-none"
+                className="text-zinc-500 hover:text-cyan-400 px-0.5 leading-none"
                 title="New Folder inside"
               >
-                +d
+                <IconFolderPlus className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={(e) => {
@@ -230,6 +288,8 @@ function TreeNode({
                 activeFilePath={activeFilePath}
                 mainTexPath={mainTexPath}
                 pendingCreate={pendingCreate}
+                selectedPath={selectedPath}
+                renamingPath={renamingPath}
                 onFileClick={onFileClick}
                 onRename={onRename}
                 onDelete={onDelete}
@@ -238,6 +298,8 @@ function TreeNode({
                 onNewFolder={onNewFolder}
                 onCreateConfirm={onCreateConfirm}
                 onCreateCancel={onCreateCancel}
+                onSelect={onSelect}
+                onRenamingDone={onRenamingDone}
               />
             ))}
           </div>
@@ -251,14 +313,18 @@ function TreeNode({
   const isActive = activeFilePath === file.path
   const isMain = mainTexPath === file.path
   const isTexFile = file.name.endsWith('.tex')
+  const isSelected = selectedPath === file.path
 
   return (
     <div
       className={`group flex items-center gap-1 px-2 py-0.5 cursor-pointer select-none rounded mx-1 ${
-        isActive ? 'bg-zinc-700' : 'hover:bg-zinc-800'
+        isActive ? 'bg-zinc-700' : isSelected ? 'bg-zinc-800' : 'hover:bg-zinc-800'
       }`}
       style={{ paddingLeft: `${8 + indent + 16}px` }}
-      onClick={() => onFileClick(file.path)}
+      onClick={() => {
+        onFileClick(file.path)
+        onSelect(file.path, 'file')
+      }}
     >
       <span className="text-sm flex-shrink-0">{fileIcon(file.name)}</span>
       {isRenaming ? (
@@ -269,7 +335,10 @@ function TreeNode({
           onBlur={handleRenameSubmit}
           onKeyDown={(e) => {
             if (e.key === 'Enter') handleRenameSubmit()
-            if (e.key === 'Escape') setIsRenaming(false)
+            if (e.key === 'Escape') {
+              setIsRenaming(false)
+              onRenamingDone()
+            }
             e.stopPropagation()
           }}
           onClick={(e) => e.stopPropagation()}
@@ -349,6 +418,10 @@ export default function FileExplorer({
   onSetMainTex,
 }: FileExplorerProps) {
   const [pendingCreate, setPendingCreate] = useState<PendingCreate | null>(null)
+  const [selectedPath, setSelectedPath] = useState<string | null>(null)
+  const [selectedType, setSelectedType] = useState<'file' | 'folder' | null>(null)
+  const [renamingPath, setRenamingPath] = useState<string | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   const tree = buildTree(files, extraFolders)
 
@@ -374,11 +447,38 @@ export default function FileExplorer({
     setPendingCreate(null)
   }
 
+  const handleSelect = useCallback((path: string, type: 'file' | 'folder') => {
+    setSelectedPath(path)
+    setSelectedType(type)
+  }, [])
+
+  const handleRenamingDone = useCallback(() => {
+    setRenamingPath(null)
+  }, [])
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!selectedPath || !selectedType) return
+    // Don't fire when focus is inside an input (rename/create)
+    if ((e.target as HTMLElement).tagName === 'INPUT') return
+    if (e.key === 'Delete') {
+      e.preventDefault()
+      onDelete(selectedPath, selectedType)
+    } else if (e.key === 'F2') {
+      e.preventDefault()
+      setRenamingPath(selectedPath)
+    }
+  }
+
   const showRootPendingCreate =
     pendingCreate !== null && pendingCreate.parentPath === null
 
   return (
-    <div className="flex flex-col h-full bg-zinc-900 border-r border-zinc-800 overflow-hidden">
+    <div
+      ref={containerRef}
+      className="flex flex-col h-full bg-zinc-900 border-r border-zinc-800 overflow-hidden outline-none"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+    >
       {/* Explorer header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800 shrink-0">
         <span className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">
@@ -387,17 +487,17 @@ export default function FileExplorer({
         <div className="flex gap-1">
           <button
             onClick={() => handleNewFile(null)}
-            className="text-zinc-500 hover:text-cyan-400 text-xs px-1.5 py-0.5 rounded hover:bg-zinc-800 transition-colors"
+            className="text-zinc-500 hover:text-cyan-400 p-1 rounded hover:bg-zinc-800 transition-colors"
             title="New File"
           >
-            +f
+            <IconFilePlus className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => handleNewFolder(null)}
-            className="text-zinc-500 hover:text-cyan-400 text-xs px-1.5 py-0.5 rounded hover:bg-zinc-800 transition-colors"
+            className="text-zinc-500 hover:text-cyan-400 p-1 rounded hover:bg-zinc-800 transition-colors"
             title="New Folder"
           >
-            +d
+            <IconFolderPlus className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
@@ -428,6 +528,8 @@ export default function FileExplorer({
             activeFilePath={activeFilePath}
             mainTexPath={mainTexPath}
             pendingCreate={pendingCreate}
+            selectedPath={selectedPath}
+            renamingPath={renamingPath}
             onFileClick={onFileClick}
             onRename={onRename}
             onDelete={onDelete}
@@ -436,6 +538,8 @@ export default function FileExplorer({
             onNewFolder={handleNewFolder}
             onCreateConfirm={handleCreateConfirm}
             onCreateCancel={handleCreateCancel}
+            onSelect={handleSelect}
+            onRenamingDone={handleRenamingDone}
           />
         ))}
         {tree.length === 0 && !showRootPendingCreate && (
