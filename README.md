@@ -26,13 +26,14 @@ A modern, real-time LaTeX editor and previewer built as a **Windows desktop appl
 
 ### LaTeX compilation
 
-You need a local TeX distribution on **PATH**. Install one of:
+> **Recommended: use GitHub Actions** — no local LaTeX install needed.  
+> See [Compiling with GitHub Actions](#compiling-with-github-actions) below.
+
+If you prefer to compile locally, install a TeX distribution and make sure both `pdflatex` and `xelatex` are available on your system PATH:
 
 - **MiKTeX** (recommended for Windows) — <https://miktex.org/download>  
   After install, open the MiKTeX Console and click **Check for Updates**.
 - **TeX Live** — <https://tug.org/texlive/>
-
-Both `pdflatex` and `xelatex` must be available on the system PATH for compilation to work.
 
 ## Quick Start (Development)
 
@@ -82,6 +83,39 @@ This produces an NSIS installer (`.exe`) and a portable executable inside the `r
 7. **Drag and drop** any supported files onto the window
 8. Uploaded assets appear in the **asset bar** — click **×** to remove individual files
 9. Click **Download PDF** to save the compiled PDF
+
+## Compiling with GitHub Actions
+
+You can compile your `.tex` files entirely in the cloud using the included GitHub Actions workflow — **no local LaTeX installation required**.
+
+### How it works
+
+The workflow (`.github/workflows/build-latex.yml`) runs automatically whenever you push a commit that changes a `.tex` file. It:
+
+1. Checks out your repository on an `ubuntu-latest` runner
+2. Installs TeX Live with XeLaTeX, pdfLaTeX, and common font packages
+3. Compiles every `.tex` file found in the repository (using XeLaTeX by default, falling back to pdfLaTeX)
+4. Uploads all generated PDFs as a build artifact called **`compiled-pdfs`**
+
+### Triggering a build
+
+The workflow runs automatically on:
+
+- **Push** — any commit that modifies a `.tex` file (or the workflow file itself)
+- **Pull request** — when a PR touches a `.tex` file
+
+You can also trigger it manually:
+
+1. Go to your repository on GitHub
+2. Click **Actions** → **Build LaTeX**
+3. Click **Run workflow** → **Run workflow**
+
+### Downloading the compiled PDF
+
+1. Go to **Actions** in your repository
+2. Click the completed **Build LaTeX** workflow run
+3. Scroll to **Artifacts** at the bottom of the page
+4. Download **`compiled-pdfs`** — it contains all PDFs generated from the repository's `.tex` files
 
 ## Writing Hebrew (RTL) with XeLaTeX
 
