@@ -66,6 +66,14 @@ body {
  */
 .monaco-editor .view-lines .view-line[data-direction="rtl"] > span {
   direction: rtl !important;
+  /*
+   * Explicitly set unicode-bidi to 'embed' so that the RTL embedding level
+   * is active regardless of whether the browser maps the HTML dir="ltr"
+   * attribute to unicode-bidi:isolate or unicode-bidi:embed.  Without this,
+   * some browsers leave the bidi isolation from dir="ltr" in place and the
+   * RTL reordering may not take effect.
+   */
+  unicode-bidi: embed !important;
 }
 
 .monaco-editor .view-lines .view-line[data-direction="ltr"] {

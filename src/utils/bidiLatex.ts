@@ -58,13 +58,16 @@ export function buildBidiPreamble(opts?: {
   const font = opts?.hebrewFont ?? 'FreeSerif'
   return [
     '% --- Bidirectional (RTL/LTR) support ---',
+    '% amsmath must be loaded BEFORE polyglossia so the bidi engine',
+    '% can patch the math environments correctly.',
+    '\\usepackage{amsmath}',
     '\\usepackage{fontspec}',
     '\\usepackage{polyglossia}',
     '',
     `\\setmainlanguage{${main}}`,
     `\\setotherlanguage{${other}}`,
     '',
-    `\\newfontfamily\\hebrewfont{${font}}`,
+    `\\newfontfamily\\hebrewfont[Script=Hebrew]{${font}}`,
     '% ----------------------------------------',
   ].join('\n')
 }
@@ -81,16 +84,28 @@ export function buildBidiPreamble(opts?: {
  *  • No special character wrapping is needed — polyglossia + bidi handle the
  *    direction automatically based on the first strong character.
  *
- * Requires XeLaTeX and the FreeSerif font (fonts-freefont-otf on Linux).
+ * Requires XeLaTeX and a Hebrew-capable font.  FreeSerif (fonts-freefont-otf
+ * on Linux) is used by default; substitute "Arial", "David", or any other
+ * installed font that supports Hebrew if needed.
+ *
+ * Package loading order matters:
+ *  1. amsmath  – loaded FIRST so that polyglossia's bidi engine can patch
+ *                the math environments for correct RTL/LTR interaction.
+ *  2. fontspec – required by polyglossia for XeLaTeX font selection.
+ *  3. polyglossia – loads the bidi engine and sets paragraph direction.
  */
 export const RTL_LATEX_TEMPLATE = `\\documentclass{article}
+% amsmath must come BEFORE polyglossia so bidi can patch math environments.
+\\usepackage{amsmath}
 \\usepackage{fontspec}
 \\usepackage{polyglossia}
 
 \\setmainlanguage{hebrew}
 \\setotherlanguage{english}
 
-\\newfontfamily\\hebrewfont{FreeSerif}
+% Script=Hebrew activates correct OpenType Hebrew shaping.
+% Replace FreeSerif with any installed Hebrew-capable font (e.g. Arial, David).
+\\newfontfamily\\hebrewfont[Script=Hebrew]{FreeSerif}
 
 \\title{כותרת המסמך}
 \\author{שם המחבר}

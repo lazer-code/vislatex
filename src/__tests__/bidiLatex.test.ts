@@ -74,11 +74,12 @@ describe('documentNeedsBidi', () => {
 describe('buildBidiPreamble', () => {
   it('uses default values when no options provided', () => {
     const preamble = buildBidiPreamble()
+    expect(preamble).toContain('\\usepackage{amsmath}')
     expect(preamble).toContain('\\usepackage{fontspec}')
     expect(preamble).toContain('\\usepackage{polyglossia}')
     expect(preamble).toContain('\\setmainlanguage{hebrew}')
     expect(preamble).toContain('\\setotherlanguage{english}')
-    expect(preamble).toContain('\\newfontfamily\\hebrewfont{FreeSerif}')
+    expect(preamble).toContain('\\newfontfamily\\hebrewfont[Script=Hebrew]{FreeSerif}')
   })
 
   it('respects custom mainLanguage option', () => {
@@ -93,7 +94,16 @@ describe('buildBidiPreamble', () => {
 
   it('respects custom hebrewFont option', () => {
     const preamble = buildBidiPreamble({ hebrewFont: 'David CLM' })
-    expect(preamble).toContain('\\newfontfamily\\hebrewfont{David CLM}')
+    expect(preamble).toContain('\\newfontfamily\\hebrewfont[Script=Hebrew]{David CLM}')
+  })
+
+  it('loads amsmath before polyglossia', () => {
+    const preamble = buildBidiPreamble()
+    const amsmathPos = preamble.indexOf('\\usepackage{amsmath}')
+    const polyglossiaPos = preamble.indexOf('\\usepackage{polyglossia}')
+    expect(amsmathPos).toBeGreaterThanOrEqual(0)
+    expect(polyglossiaPos).toBeGreaterThanOrEqual(0)
+    expect(amsmathPos).toBeLessThan(polyglossiaPos)
   })
 
   it('produces valid multi-line output', () => {
@@ -115,6 +125,18 @@ describe('RTL_LATEX_TEMPLATE', () => {
   it('includes polyglossia setup', () => {
     expect(RTL_LATEX_TEMPLATE).toContain('\\usepackage{polyglossia}')
     expect(RTL_LATEX_TEMPLATE).toContain('\\setmainlanguage{hebrew}')
+  })
+
+  it('loads amsmath before polyglossia', () => {
+    const amsmathPos = RTL_LATEX_TEMPLATE.indexOf('\\usepackage{amsmath}')
+    const polyglossiaPos = RTL_LATEX_TEMPLATE.indexOf('\\usepackage{polyglossia}')
+    expect(amsmathPos).toBeGreaterThanOrEqual(0)
+    expect(polyglossiaPos).toBeGreaterThanOrEqual(0)
+    expect(amsmathPos).toBeLessThan(polyglossiaPos)
+  })
+
+  it('uses Script=Hebrew in font declaration', () => {
+    expect(RTL_LATEX_TEMPLATE).toContain('[Script=Hebrew]')
   })
 
   it('demonstrates mixed Hebrew + math in source order', () => {
